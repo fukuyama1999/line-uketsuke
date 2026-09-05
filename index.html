@@ -78,7 +78,7 @@
     <input id="newKana" type="text" inputmode="kana" autocomplete="off" placeholder="やまだ はなこ">
     <button id="registerButton" type="button">この内容で登録する</button>
     <div id="similarBox" aria-live="polite"></div>
-    <button id="backToSearch" class="quiet" type="button">名簿から探す画面にもどる</button>
+    <button id="backToSearch" class="quiet" type="button">名簿にお名前がある方はこちら</button>
   </section>
 
   <!-- 出席ボタン -->
@@ -150,6 +150,7 @@ const esc = (s) => String(s == null ? '' : s)
 let idToken = '';
 let isStaff = false;
 let allowSelfRegister = true;
+let firstScreen = 'register';
 
 function show(id) {
   SCREENS.forEach(x => $(x).classList.toggle('hidden', x !== id));
@@ -200,13 +201,20 @@ async function loadStatus(flash) {
 
   isStaff = !!data.staff;
   allowSelfRegister = data.allowSelfRegister !== false;
+  firstScreen = data.firstScreen || 'register';
 
   if (data.state === 'unlinked') {
     $('lead').textContent = 'はじめての方は、お名前を登録してください。';
     $('toNewButton').classList.toggle('hidden', !allowSelfRegister);
     $('searchResult').innerHTML = '';
     $('kana').value = '';
-    show('unlinked');
+    // 運用設定の「初回画面」で、最初に出す画面を切り替える
+    if (allowSelfRegister && firstScreen !== 'search') {
+      $('similarBox').innerHTML = '';
+      show('newreg');
+    } else {
+      show('unlinked');
+    }
     return;
   }
 
