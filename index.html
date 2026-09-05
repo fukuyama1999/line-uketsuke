@@ -1,131 +1,421 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>出席受付</title>
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <style>
-    :root{--navy:#173b63;--blue:#1769aa;--bg:#f4f7fa;--text:#15202b;--muted:#5d6b78;--line:#d8e0e8;--ok:#147c4b;--error:#b3261e}
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif}
-    main{max-width:560px;min-height:100vh;margin:auto;padding:26px 18px 48px;background:#fff} h1{font-size:24px;margin:0 0 8px;color:var(--navy)} h2{font-size:19px;margin:0 0 12px} p{line-height:1.7} .lead,.hint{color:var(--muted)} .card{margin-top:22px;padding:20px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 2px 10px #183b6310}
-    label{display:block;margin:16px 0 6px;font-weight:700} input{width:100%;padding:14px;border:1.5px solid #aebdca;border-radius:9px;font-size:17px} button{width:100%;margin-top:16px;padding:15px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-size:17px;font-weight:700;cursor:pointer} button:disabled{background:#91a4b5;cursor:wait} button.sub{background:#fff;border:1.5px solid var(--blue);color:var(--blue)}
-    .candidate{display:flex;justify-content:space-between;align-items:center;width:100%;margin-top:9px;padding:14px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--text);text-align:left;font-size:16px}.candidate small{color:var(--muted)} .notice{padding:14px;border-radius:9px;background:#edf7f1;color:#125c3a;line-height:1.7}.error{padding:14px;border-radius:9px;background:#fff0ef;color:var(--error);line-height:1.7}.hidden{display:none!important}.center{text-align:center}.mark{font-size:52px;line-height:1;margin:8px 0 18px}.name{font-size:22px;font-weight:700}.foot{margin-top:26px;font-size:13px;color:var(--muted)}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>出席受付</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{--navy:#173b63;--blue:#1769aa;--bg:#f4f7fa;--text:#15202b;--muted:#5d6b78;
+        --line:#d8e0e8;--ok:#147c4b;--error:#b3261e}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-size:17px;line-height:1.7;
+       font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif}
+  main{max-width:560px;min-height:100vh;margin:auto;background:#fff;
+       padding:26px 18px calc(48px + env(safe-area-inset-bottom))}
+  h1{font-size:24px;margin:0 0 8px;color:var(--navy)}
+  h2{font-size:19px;margin:0 0 12px}
+  p{line-height:1.7;margin:0 0 12px}
+  .lead,.hint{color:var(--muted)}
+  .card{margin-top:22px;padding:20px;border:1px solid var(--line);border-radius:14px;background:#fff}
+  label{display:block;margin:16px 0 6px;font-weight:700}
+  input{width:100%;padding:15px;border:1.5px solid #aebdca;border-radius:9px;font-size:18px}
+  input:focus{outline:3px solid var(--blue);outline-offset:1px}
+  button{width:100%;margin-top:16px;padding:16px;border:0;border-radius:9px;
+         background:var(--blue);color:#fff;font-size:18px;font-weight:700;cursor:pointer}
+  button:disabled{background:#91a4b5;cursor:wait}
+  button.sub{background:#fff;border:1.5px solid var(--blue);color:var(--blue)}
+  button.quiet{background:none;color:var(--muted);font-size:15px;font-weight:400;
+               text-decoration:underline;padding:12px;margin-top:8px}
+  .big{min-height:96px;font-size:26px;letter-spacing:.06em}
+  .candidate{display:flex;justify-content:space-between;align-items:center;gap:10px;
+             width:100%;margin-top:10px;padding:18px 16px;border:1px solid var(--line);
+             border-radius:9px;background:#fff;color:var(--text);text-align:left;
+             font-size:19px;font-weight:700}
+  .candidate small{color:var(--muted);font-weight:400;font-size:14px;white-space:nowrap}
+  .candidate[data-done="1"]{opacity:.45}
+  .notice{padding:14px;border-radius:9px;background:#edf7f1;color:#125c3a}
+  .warn{padding:14px;border-radius:9px;background:#fff8e6;color:#7a5a10}
+  .error{padding:14px;border-radius:9px;background:#fff0ef;color:var(--error)}
+  .hidden{display:none!important}
+  .center{text-align:center}
+  .mark{font-size:56px;line-height:1;margin:8px 0 14px;color:var(--ok)}
+  .name{font-size:26px;font-weight:700;margin:6px 0 0}
+  .foot{margin-top:22px;font-size:14px;color:var(--muted)}
+  .idbox{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;word-break:break-all;
+         background:#f4f7fa;border:1px solid var(--line);border-radius:8px;padding:14px}
+</style>
 </head>
 <body>
 <main>
   <h1>出席受付</h1>
-  <p class="lead">受付内容を確認して、「出席する」を押してください。</p>
+  <p class="lead" id="lead">受付内容を確認して、「出席する」を押してください。</p>
 
+  <!-- 読み込み中 -->
   <section id="loading" class="card center"><p>LINEの情報を確認しています…</p></section>
 
+  <!-- 初回：台帳から探す -->
   <section id="unlinked" class="card hidden">
     <h2>初回登録</h2>
-    <p class="hint">参加者台帳に登録されている方のお名前を選択してください。本人確認のため、ふりがなを2文字以上入力します。</p>
-    <label for="kana">ふりがな（姓または名）</label>
+    <p class="hint">お名前のよみを、はじめの2文字だけひらがなで入れてください。</p>
+    <label for="kana">ふりがな（姓のはじめ）</label>
     <input id="kana" type="text" inputmode="kana" autocomplete="off" placeholder="例：やまだ">
-    <button id="searchButton" type="button">名前を検索する</button>
+    <button id="searchButton" type="button">名前をさがす</button>
     <div id="searchResult" aria-live="polite"></div>
-    <p class="foot">台帳にお名前がない場合は、スタッフへお声がけください。</p>
+    <button id="toNewButton" class="quiet hidden" type="button">名簿にお名前がない方はこちら</button>
+    <p class="foot">うまくいかないときは、スタッフへお声がけください。</p>
   </section>
 
+  <!-- 初回：自分で登録する -->
+  <section id="newreg" class="card hidden">
+    <h2>はじめての方の登録</h2>
+    <p class="hint">お名前を入れてください。ふりがなは自動で入ります。違っていたら直してください。</p>
+    <label for="surname">姓</label>
+    <input id="surname" type="text" autocomplete="off" placeholder="例：山田">
+    <label for="givenName">名</label>
+    <input id="givenName" type="text" autocomplete="off" placeholder="例：花子">
+    <label for="newKana">ふりがな</label>
+    <input id="newKana" type="text" inputmode="kana" autocomplete="off" placeholder="やまだ はなこ">
+    <button id="registerButton" type="button">この内容で登録する</button>
+    <div id="similarBox" aria-live="polite"></div>
+    <button id="backToSearch" class="quiet" type="button">名簿から探す画面にもどる</button>
+  </section>
+
+  <!-- 出席ボタン -->
   <section id="checkin" class="card hidden">
-    <div class="center"><div class="mark">✓</div><p class="hint">登録済みの参加者です</p><p id="participantName" class="name"></p></div>
-    <button id="checkinButton" type="button">出席する</button>
-    <p class="foot">同じ日に複数回押しても、出席は重複登録されません。</p>
+    <div class="center">
+      <p class="hint" id="checkinHint">登録済みの方です</p>
+      <p id="participantName" class="name"></p>
+    </div>
+    <div id="checkinFlash"></div>
+    <button id="checkinButton" class="big" type="button">出席する</button>
+    <p class="foot">同じ日に何度押しても、出席は重複しません。</p>
   </section>
 
+  <!-- 受付できない日 -->
+  <section id="closed" class="card hidden">
+    <div class="center"><p id="closedName" class="name"></p></div>
+    <p class="warn" id="closedText" style="margin-top:16px"></p>
+  </section>
+
+  <!-- 完了 -->
   <section id="complete" class="card hidden center">
-    <div class="mark">✓</div><h2 id="completeTitle">出席を受け付けました</h2><p id="completeText" class="notice"></p>
+    <div class="mark">✓</div>
+    <h2 id="completeTitle">出席を受け付けました</h2>
+    <p id="completeText" class="notice"></p>
   </section>
 
-  <section id="errorBox" class="card hidden"><h2>受付できませんでした</h2><p id="errorText" class="error"></p><button id="retryButton" class="sub" type="button">もう一度試す</button></section>
+  <!-- エラー -->
+  <section id="errorBox" class="card hidden">
+    <h2>受付できませんでした</h2>
+    <p id="errorText" class="error"></p>
+    <button id="retryButton" class="sub" type="button">もう一度試す</button>
+  </section>
+
+  <!-- 職員用 -->
+  <section id="staff" class="card hidden">
+    <h2>代理受付</h2>
+    <p class="hint">お名前かよみを、はじめの1文字以上入れてください。</p>
+    <input id="staffKeyword" type="text" autocomplete="off" placeholder="やまだ／山田">
+    <button id="staffSearchButton" type="button">さがす</button>
+    <div id="staffResult" aria-live="polite"></div>
+    <button id="staffBack" class="quiet" type="button">通常の受付にもどる</button>
+  </section>
+
+  <section id="whoami" class="card hidden">
+    <h2>職員として登録する</h2>
+    <p class="hint">下のIDを、スプレッドシートの「運用設定」に「スタッフLINE内部ID」として1行追加してください。追加後、メニューの「一時記憶を消去」を実行します。</p>
+    <div class="idbox" id="myId"></div>
+    <button id="copyId" class="sub" type="button">IDをコピーする</button>
+    <button id="whoamiBack" class="quiet" type="button">受付にもどる</button>
+  </section>
+
+  <button id="staffLink" class="quiet" type="button">職員用</button>
 </main>
 
 <script>
 'use strict';
+
+/* ---- 書き換えるのはこの2行だけ ---- */
 const LIFF_ID = '2011459385-7lJkDlr6';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwayo6o_NLYXy_8BrzYnWkHywaJb4ZEHycZAwmYdpz5hD-7F3qb4R0E3PbEWAA2sE1sPQ/exec';
-let idToken = '';
+/* ---------------------------------- */
 
 const $ = (id) => document.getElementById(id);
-const screens = ['loading','unlinked','checkin','complete','errorBox'];
-function show(id){ screens.forEach(x => $(x).classList.toggle('hidden',x !== id)); }
-function setBusy(button,busy,label){ button.disabled = busy; if(busy) button.dataset.label = button.textContent; button.textContent = busy ? '処理中…' : (button.dataset.label || label); }
-function fail(message){ $('errorText').textContent = message || '通信に失敗しました。電波状況を確認して、もう一度お試しください。'; show('errorBox'); }
+const SCREENS = ['loading','unlinked','newreg','checkin','closed','complete','errorBox','staff','whoami'];
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
-async function api(action, extra = {}) {
-  const response = await fetch(GAS_URL, {
-    method: 'POST', redirect: 'follow',
-    headers: {'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({action, idToken, ...extra})
-  });
-  const text = await response.text();
+let idToken = '';
+let isStaff = false;
+let allowSelfRegister = true;
+
+function show(id) {
+  SCREENS.forEach(x => $(x).classList.toggle('hidden', x !== id));
+  $('staffLink').classList.toggle('hidden', id === 'staff' || id === 'whoami');
+  window.scrollTo(0, 0);
+}
+function fail(message) {
+  $('errorText').textContent = message || '通信に失敗しました。電波を確認して、もう一度お試しください。';
+  show('errorBox');
+}
+function busy(button, on, label) {
+  button.disabled = on;
+  if (on) { button.dataset.label = button.textContent; button.textContent = '処理中…'; }
+  else { button.textContent = button.dataset.label || label; }
+}
+
+/* ---------- サーバーとのやりとり ---------- */
+/* ok:false でも例外にせず、そのまま返す。判断は呼び出し側で行う。 */
+async function api(action, extra, attempt) {
+  extra = extra || {}; attempt = attempt || 0;
+  let text;
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST', redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action, idToken: idToken }, extra))
+    });
+    text = await res.text();
+  } catch (e) {
+    if (attempt < 3) { await sleep(900 + Math.random() * 1500); return api(action, extra, attempt + 1); }
+    return { ok: false, code: 'NET', message: '通信できませんでした。電波の良い場所でもう一度お試しください。' };
+  }
   let data;
-  try { data = JSON.parse(text); } catch (_) { throw new Error('サーバーから正しい応答を受け取れませんでした。'); }
-  if (!response.ok || !data.ok) throw new Error(data.message || '処理に失敗しました。');
+  try { data = JSON.parse(text); }
+  catch (_) { return { ok: false, code: 'BADJSON', message: 'サーバーから正しい応答を受け取れませんでした。' }; }
+  if (data.code === 'RETRY' && attempt < 4) {
+    await sleep(800 + Math.random() * 2000);
+    return api(action, extra, attempt + 1);
+  }
   return data;
 }
 
-async function loadStatus(){
+/* ---------- 状態の読み込み ---------- */
+async function loadStatus(flash) {
   show('loading');
-  try {
-    const data = await api('status');
-    if (data.status === 'linked') {
-      $('participantName').textContent = data.fullName || '';
-      show('checkin');
-    } else {
-      show('unlinked');
-      $('kana').focus();
-    }
-  } catch (e) { fail(e.message); }
+  const data = await api('status');
+  if (!data.ok) { fail(data.message); return; }
+
+  isStaff = !!data.staff;
+  allowSelfRegister = data.allowSelfRegister !== false;
+
+  if (data.state === 'unlinked') {
+    $('lead').textContent = 'はじめての方は、お名前を登録してください。';
+    $('toNewButton').classList.toggle('hidden', !allowSelfRegister);
+    $('searchResult').innerHTML = '';
+    $('kana').value = '';
+    show('unlinked');
+    return;
+  }
+
+  $('lead').textContent = '受付内容を確認して、「出席する」を押してください。';
+
+  if (!data.open) {
+    $('closedName').textContent = (data.fullName || '') + ' さん';
+    $('closedText').textContent = data.message || '本日は受付日ではありません。';
+    show('closed');
+    return;
+  }
+
+  if (data.state === 'done') {
+    $('completeTitle').textContent = '本日はすでに受付済みです';
+    $('completeText').textContent = (data.fullName || '') + ' さん　' + (data.date || '');
+    show('complete');
+    return;
+  }
+
+  $('participantName').textContent = (data.fullName || '') + ' さん';
+  $('checkinFlash').innerHTML = flash ? '<p class="notice">' + esc(flash) + '</p>' : '';
+  show('checkin');
 }
 
-async function start(){
-  try {
-    await liff.init({liffId: LIFF_ID});
-    if (!liff.isLoggedIn()) { liff.login({redirectUri: location.href}); return; }
-    idToken = liff.getIDToken();
-    if (!idToken) throw new Error('LINEの本人確認情報を取得できませんでした。LINEアプリ内から開き直してください。');
-    await loadStatus();
-  } catch (e) { fail(e.message || 'LINEの初期化に失敗しました。'); }
+function showComplete(data) {
+  $('completeTitle').textContent = data.already ? '本日はすでに受付済みです' : '出席を受け付けました';
+  $('completeText').textContent = (data.fullName || '') + ' さん　' + (data.date || '');
+  show('complete');
 }
 
+/* ---------- 初回：台帳から探す ---------- */
 $('searchButton').addEventListener('click', async () => {
   const kana = $('kana').value.trim();
-  if (kana.length < 2) { $('searchResult').innerHTML = '<p class="error">ふりがなを2文字以上入力してください。</p>'; return; }
-  const button = $('searchButton'); setBusy(button,true);
-  try {
-    const data = await api('search',{kana});
-    const items = data.candidates || [];
-    if (!items.length) { $('searchResult').innerHTML = '<p class="error">該当するお名前が見つかりません。入力を確認するか、スタッフへお声がけください。</p>'; return; }
-    $('searchResult').innerHTML = '<p class="hint">ご本人のお名前を選んでください。</p>' + items.map(x => `<button type="button" class="candidate" data-id="${escapeHtml(x.participantId)}"><span>${escapeHtml(x.fullName)}</span><small>${escapeHtml(x.kana || '')}</small></button>`).join('');
-    document.querySelectorAll('.candidate').forEach(b => b.addEventListener('click', () => link(b.dataset.id)));
-  } catch(e) { $('searchResult').innerHTML = `<p class="error">${escapeHtml(e.message)}</p>`; }
-  finally { setBusy(button,false,'名前を検索する'); }
+  if (kana.length < 2) {
+    $('searchResult').innerHTML = '<p class="error">ふりがなを2文字以上入れてください。</p>';
+    return;
+  }
+  const button = $('searchButton');
+  busy(button, true);
+  const data = await api('search', { kana: kana });
+  busy(button, false, '名前をさがす');
+
+  if (!data.ok) { $('searchResult').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+  if (data.tooMany) {
+    $('searchResult').innerHTML = '<p class="warn">候補が多すぎます。よみをもう1文字増やしてください。</p>';
+    return;
+  }
+  const items = data.candidates || [];
+  if (!items.length) {
+    $('searchResult').innerHTML = '<p class="warn">そのよみの方は名簿にありません。' +
+      (allowSelfRegister ? '下の「名簿にお名前がない方はこちら」から登録できます。' : 'スタッフへお声がけください。') + '</p>';
+    return;
+  }
+  $('searchResult').innerHTML = '<p class="hint" style="margin-top:14px">ご本人のお名前を押してください。</p>' +
+    items.map(x => '<button type="button" class="candidate" data-id="' + esc(x.id) + '">' +
+      '<span>' + esc(x.fullName) + '</span><small>' + esc(x.kana || '') + '</small></button>').join('');
+  document.querySelectorAll('#searchResult .candidate').forEach(b => {
+    b.addEventListener('click', () => link(b.dataset.id, b.querySelector('span').textContent));
+  });
 });
 
-async function link(participantId){
-  try {
-    const data = await api('link',{participantId});
-    $('participantName').textContent = data.fullName || '';
-    show('checkin');
-  } catch(e) { fail(e.message); }
+async function link(participantId, displayName) {
+  if (!confirm(displayName + ' さんで登録します。よろしいですか。')) return;
+  show('loading');
+  const data = await api('link', { participantId: participantId });
+  if (!data.ok) { fail(data.message); return; }
+  if (data.checkedIn) { showComplete(data); return; }
+  await loadStatus('登録が完了しました。');
 }
 
-$('checkinButton').addEventListener('click', async () => {
-  const button = $('checkinButton'); setBusy(button,true);
-  try {
-    const data = await api('checkin');
-    $('completeTitle').textContent = data.alreadyCheckedIn ? '本日はすでに出席済みです' : '出席を受け付けました';
-    $('completeText').textContent = `${data.fullName || ''}さん　${data.date || ''}`;
-    show('complete');
-  } catch(e) { fail(e.message); }
-  finally { setBusy(button,false,'出席する'); }
+/* ---------- 初回：自分で登録する ---------- */
+$('toNewButton').addEventListener('click', () => {
+  $('similarBox').innerHTML = '';
+  show('newreg');
+  $('surname').focus();
 });
-$('retryButton').addEventListener('click', start);
-function escapeHtml(s){ return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+$('backToSearch').addEventListener('click', () => { show('unlinked'); });
+
+/* 日本語入力の変換前のかなを拾って、ふりがな欄を自動で埋める */
+const autoKana = { sei: '', mei: '', manual: false };
+function toHira(s) {
+  return String(s || '').normalize('NFKC')
+    .replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+    .replace(/[^\u3041-\u3096\u30fc]/g, '');
+}
+function syncKana() {
+  if (autoKana.manual) return;
+  const v = (autoKana.sei + ' ' + autoKana.mei).trim();
+  $('newKana').value = v;
+}
+function hookKana(input, key) {
+  let composing = '';
+  input.addEventListener('compositionupdate', e => { composing = e.data || ''; });
+  input.addEventListener('compositionend', () => {
+    if (composing) { autoKana[key] += toHira(composing); composing = ''; syncKana(); }
+  });
+  input.addEventListener('input', () => { if (input.value === '') { autoKana[key] = ''; syncKana(); } });
+}
+hookKana($('surname'), 'sei');
+hookKana($('givenName'), 'mei');
+$('newKana').addEventListener('input', () => { autoKana.manual = true; });
+
+$('registerButton').addEventListener('click', () => submitNew(false));
+
+async function submitNew(confirmedNew) {
+  const payload = {
+    surname: $('surname').value.trim(),
+    givenName: $('givenName').value.trim(),
+    kana: $('newKana').value.trim(),
+    confirmedNew: !!confirmedNew
+  };
+  const button = $('registerButton');
+  busy(button, true);
+  const data = await api('registerNew', payload);
+  busy(button, false, 'この内容で登録する');
+
+  if (!data.ok) { $('similarBox').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+
+  if (data.similar && data.similar.length) {
+    $('similarBox').innerHTML =
+      '<p class="warn" style="margin-top:16px">名簿に似たお名前があります。ご自分のお名前があれば、そちらを押してください。</p>' +
+      data.similar.map(x => '<button type="button" class="candidate" data-id="' + esc(x.id) + '">' +
+        '<span>' + esc(x.fullName) + '</span><small>' + esc(x.kana || '') + '</small></button>').join('') +
+      '<button type="button" class="sub" id="forceNew">この中にいない。新しく登録する</button>';
+    document.querySelectorAll('#similarBox .candidate').forEach(b => {
+      b.addEventListener('click', () => link(b.dataset.id, b.querySelector('span').textContent));
+    });
+    $('forceNew').addEventListener('click', () => submitNew(true));
+    return;
+  }
+
+  if (data.checkedIn) { showComplete(data); return; }
+  await loadStatus('登録が完了しました。');
+}
+
+/* ---------- 出席する ---------- */
+$('checkinButton').addEventListener('click', async () => {
+  const button = $('checkinButton');
+  busy(button, true);
+  const data = await api('checkin');
+  busy(button, false, '出席する');
+  if (!data.ok) {
+    if (data.code === 'UNLINKED') { await loadStatus(); return; }
+    fail(data.message);
+    return;
+  }
+  showComplete(data);
+});
+
+$('retryButton').addEventListener('click', () => start());
+
+/* ---------- 職員用 ---------- */
+$('staffLink').addEventListener('click', async () => {
+  if (isStaff) { $('staffResult').innerHTML = ''; $('staffKeyword').value = ''; show('staff'); return; }
+  const data = await api('whoami');
+  $('myId').textContent = (data && data.userId) || '取得できませんでした';
+  show('whoami');
+});
+$('whoamiBack').addEventListener('click', () => loadStatus());
+$('staffBack').addEventListener('click', () => loadStatus());
+$('copyId').addEventListener('click', () => {
+  navigator.clipboard.writeText($('myId').textContent)
+    .then(() => alert('コピーしました。'), () => alert('コピーできません。長押しで選択してください。'));
+});
+
+$('staffSearchButton').addEventListener('click', async () => {
+  const keyword = $('staffKeyword').value.trim();
+  if (!keyword) return;
+  const button = $('staffSearchButton');
+  busy(button, true);
+  const data = await api('staffSearch', { keyword: keyword });
+  busy(button, false, 'さがす');
+  if (!data.ok) { $('staffResult').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+  const items = data.candidates || [];
+  if (!items.length) { $('staffResult').innerHTML = '<p class="warn">見つかりませんでした。</p>'; return; }
+  $('staffResult').innerHTML = items.map(x =>
+    '<button type="button" class="candidate" data-id="' + esc(x.id) + '" data-done="' + (x.done ? '1' : '0') + '">' +
+    '<span>' + esc(x.fullName) + '</span><small>' + esc(x.kana || '') + (x.done ? '　受付済み' : '') + '</small></button>'
+  ).join('');
+  document.querySelectorAll('#staffResult .candidate').forEach(b => {
+    b.addEventListener('click', async () => {
+      if (b.dataset.done === '1') { alert('この方はすでに受付済みです。'); return; }
+      const name = b.querySelector('span').textContent;
+      if (!confirm(name + ' さんを代理で受付します。')) return;
+      b.disabled = true;
+      const r = await api('staffCheckin', { participantId: b.dataset.id });
+      if (!r.ok) { alert(r.message); b.disabled = false; return; }
+      b.dataset.done = '1';
+      b.querySelector('small').textContent += '　受付済み';
+      $('staffKeyword').value = '';
+      $('staffKeyword').focus();
+    });
+  });
+});
+
+/* ---------- 起動 ---------- */
+async function start() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+  } catch (e) {
+    fail('受付画面をひらけませんでした。LINEのアプリから開き直してください。');
+    return;
+  }
+  if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+  idToken = liff.getIDToken();
+  if (!idToken) { liff.login({ redirectUri: location.href }); return; }
+  await loadStatus();
+}
+
 start();
 </script>
 </body>
