@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- 受付画面 修正版7（サーバーの修正版8と組み合わせて使う） -->
+<!-- 受付画面 修正版8（サーバーの修正版8以降と組み合わせて使う） -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -50,7 +50,7 @@
          background:#f4f7fa;border:1px solid var(--line);border-radius:8px;padding:14px}
 
   /* ---- 家族の受付（修正版3で追加） ---- */
-  /* 出席する人をえらぶ行。押すとチェックが付き、もう一度押すと外れる */
+  /* 出席する人を選ぶ行。押すとチェックが付き、もう一度押すと外れる */
   .member{display:flex;align-items:center;gap:14px;width:100%;margin-top:10px;padding:14px 16px;
           min-height:64px;border:1.5px solid var(--line);border-radius:10px;background:#fff;
           color:var(--text);text-align:left;font-size:20px;font-weight:700;cursor:pointer}
@@ -75,6 +75,10 @@
               background:#fff;color:var(--blue);font-size:15px;font-weight:700}
   #completeText{white-space:pre-line}
   .saved strong{display:block;font-size:18px;margin-bottom:2px}
+  /* 日本語の改行。言葉の途中（「登」と「録」のあいだなど）では改行せず、
+     スクリプトが入れる文節の切れ目の印と、空白、句読点のところでだけ改行する。
+     1つの文節が1行に収まらないときだけ、その中で改行する */
+  body{word-break:keep-all;overflow-wrap:anywhere;line-break:strict}
 </style>
 </head>
 <body>
@@ -89,10 +93,10 @@
   <!-- 初回：台帳から探す -->
   <section id="unlinked" class="card hidden">
     <h2>初回登録</h2>
-    <p class="hint">お名前のよみを、はじめの2文字だけひらがなで入れてください。</p>
-    <label for="kana">ふりがな（姓のはじめ）</label>
+    <p class="hint">お名前の読みを、初めの2文字だけひらがなで入れてください。</p>
+    <label for="kana">ふりがな（姓の初め）</label>
     <input id="kana" type="text" inputmode="kana" autocomplete="off" placeholder="例：やまだ">
-    <button id="searchButton" type="button">名前をさがす</button>
+    <button id="searchButton" type="button">名前を探す</button>
     <div id="searchResult" aria-live="polite"></div>
     <button id="toNewButton" class="quiet hidden" type="button">名簿にお名前がない方はこちら</button>
     <p class="foot">うまくいかないときは、スタッフへお声がけください。</p>
@@ -100,7 +104,7 @@
 
   <!-- 初回：自分で登録する -->
   <section id="newreg" class="card hidden">
-    <h2>はじめての方の登録</h2>
+    <h2>初めての方の登録</h2>
     <p class="hint">お名前を入れてください。ふりがなは自動で入ります。違っていたら直してください。</p>
     <label for="surname">姓</label>
     <input id="surname" type="text" autocomplete="off" placeholder="例：山田">
@@ -124,7 +128,7 @@
     <button id="familyFromSingle" class="sub" type="button">ご家族を登録する</button>
   </section>
 
-  <!-- 出席する人をえらぶ（2人以上の世帯） -->
+  <!-- 出席する人を選ぶ（2人以上の世帯） -->
   <section id="family" class="card hidden">
     <h2>どなたが出席していますか？</h2>
     <p class="hint">出席している方を押して、チェックを付けてください。もう一度押すと外れます。</p>
@@ -137,7 +141,7 @@
   <!-- ご家族の登録 -->
   <section id="manage" class="card hidden">
     <h2>ご家族の登録</h2>
-    <p class="hint">いっしょに来るご家族を登録すると、受付の画面でまとめてえらべるようになります。登録したご家族は、ご家族のどなたのスマホからでも受付できます。</p>
+    <p class="hint">一緒に来るご家族を登録すると、受付の画面でまとめて選べるようになります。登録したご家族は、ご家族のどなたのスマホからでも受付できます。</p>
     <div id="manageList"></div>
     <div id="listMsg" aria-live="polite"></div>
     <!-- お名前の修正 -->
@@ -168,7 +172,7 @@
       <div id="famCandidates" aria-live="polite"></div>
       <div id="famMsg" aria-live="polite"></div>
     </div>
-    <button id="manageBack" class="sub" type="button">受付の画面にもどる</button>
+    <button id="manageBack" class="sub" type="button">受付の画面に戻る</button>
     <p class="foot">ご家族を外したいときは、スタッフへお声がけください。</p>
   </section>
 
@@ -238,6 +242,61 @@ function busy(button, on, label) {
   else { button.textContent = button.dataset.label || label; }
 }
 
+/* ---------- 日本語の改行 ----------
+   文節の切れ目に、目に見えない印（ゼロ幅スペース）を入れる。
+   CSS の word-break:keep-all と組み合わせると、改行はこの印と空白、句読点のところでだけ起きる。
+   切れ目の決め方
+   ・ひらがなのあとに漢字、カタカナ、英数字が来るところ。
+     ただし「受け付け」「開き直す」のような1字の送りがなのところでは切らない（助詞の1字なら切る）。
+     「ご家族」「お名前」の「ご」「お」は、うしろの言葉につける。
+   ・句読点のあと。閉じかっこのあと（すぐにひらがなが続くときは切らない）。開きかっこの前。 */
+const ZWSP = '\u200b';
+const HIRA = /[\u3041-\u3096\u309d\u309e]/;
+const WORD = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u30a1-\u30fa\u30fd\u30fe\u3005\u3006A-Za-z0-9\uff10-\uff19\uff21-\uff3a\uff41-\uff5a]/;
+const SMALL = /[\u30a1\u30a3\u30a5\u30a7\u30a9\u30c3\u30e3\u30e5\u30e7\u30ee\u30f5\u30f6]/;
+const PARTICLE = /^[をにがはでとのへもやか]$/;
+const PUNCT = /[、。，．！？!?]/;
+const CLOSE = /[）」』】]/;
+const OPEN = /[（「『【]/;
+function phraseBreaks(text) {
+  const s = String(text).replace(/\u200b/g, '');
+  const cut = [];
+  for (let i = 1; i < s.length; i++) {
+    const c = s[i], p = s[i - 1];
+    if (WORD.test(c) && !SMALL.test(c) && HIRA.test(p)) {
+      let j = i - 1;
+      while (j > 0 && HIRA.test(s[j - 1])) j--;
+      const run = s.slice(j, i);                     // 前の言葉とのあいだのひらがな
+      const betweenWords = j > 0 && WORD.test(s[j - 1]);
+      if (p === 'ご' || p === 'お') {
+        if (run.length >= 2) cut[i - 1] = true;       // 「したご家族」→「した｜ご家族」
+      } else if (!(run.length === 1 && betweenWords && !PARTICLE.test(run))) {
+        cut[i] = true;
+      }
+    }
+    if (PUNCT.test(p) && !PUNCT.test(c) && !CLOSE.test(c)) cut[i] = true;
+    if (CLOSE.test(p) && !CLOSE.test(c) && !PUNCT.test(c) && !HIRA.test(c)) cut[i] = true;
+    if (OPEN.test(c)) cut[i] = true;
+  }
+  let out = '';
+  for (let i = 0; i < s.length; i++) out += (cut[i] ? ZWSP : '') + s[i];
+  return out;
+}
+function applyPhraseBreaks(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(n => {
+    const t = phraseBreaks(n.data);
+    if (t !== n.data) n.data = t;
+  });
+}
+// 画面の文字が書き換わるたびに印を入れ直す（入れ直しても結果が同じなら、何も変えない）
+const mainArea = document.querySelector('main');
+applyPhraseBreaks(mainArea);
+new MutationObserver(() => applyPhraseBreaks(mainArea))
+  .observe(mainArea, { childList: true, subtree: true, characterData: true });
+
 /* ---------- サーバーとのやりとり ---------- */
 /* ok:false でも例外にせず、そのまま返す。判断は呼び出し側で行う。 */
 async function api(action, extra, attempt) {
@@ -279,7 +338,7 @@ async function loadStatus(flash) {
   applyStatus(data);
 
   if (data.state === 'unlinked') {
-    $('lead').textContent = 'はじめての方は、お名前を登録してください。';
+    $('lead').textContent = '初めての方は、お名前を登録してください。';
     $('toNewButton').classList.toggle('hidden', !allowSelfRegister);
     $('searchResult').innerHTML = '';
     $('kana').value = '';
@@ -297,7 +356,7 @@ async function loadStatus(flash) {
   $('flash').innerHTML = flash ? savedHtml(flash) : '';
 
   if (!data.open) {
-    $('lead').textContent = '出席の受付ができるのは、受付時間のあいだです。';
+    $('lead').textContent = '出席の受付ができるのは、受付時間の間です。';
     $('closedName').textContent = (data.fullName || '') + ' さん';
     $('closedText').textContent = data.message || '本日は受付日ではありません。';
     show('closed', true);
@@ -308,18 +367,18 @@ async function loadStatus(flash) {
   if (family.length > 1) {
     if (family.every(p => p.done)) {
       $('lead').textContent = '受付は終わっています。そのまま画面を閉じて構いません。';
-      showDone('本日はすでに受付済みです',
+      showDone('本日は既に受付済みです',
                family.map(p => p.fullName + ' さん').join('\n') + '\n' + (data.date || ''), true);
       return;
     }
-    $('lead').textContent = '出席している方をえらんで、「出席する」を押してください。';
+    $('lead').textContent = '出席している方を選んで、「出席する」を押してください。';
     renderFamily();
     show('family', true);
     return;
   }
 
   if (data.state === 'done') {
-    showDone('本日はすでに受付済みです', (data.fullName || '') + ' さん　' + (data.date || ''), true);
+    showDone('本日は既に受付済みです', (data.fullName || '') + ' さん　' + (data.date || ''), true);
     return;
   }
 
@@ -334,7 +393,7 @@ function showDone(title, text, keepFlash) {
 }
 
 function showComplete(data) {
-  showDone(data.already ? '本日はすでに受付済みです' : '出席を受け付けました',
+  showDone(data.already ? '本日は既に受付済みです' : '出席を受け付けました',
            (data.fullName || '') + ' さん　' + (data.date || ''));
 }
 
@@ -348,16 +407,16 @@ $('searchButton').addEventListener('click', async () => {
   const button = $('searchButton');
   busy(button, true);
   const data = await api('search', { kana: kana });
-  busy(button, false, '名前をさがす');
+  busy(button, false, '名前を探す');
 
   if (!data.ok) { $('searchResult').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
   if (data.tooMany) {
-    $('searchResult').innerHTML = '<p class="warn">候補が多すぎます。よみをもう1文字増やしてください。</p>';
+    $('searchResult').innerHTML = '<p class="warn">候補が多すぎます。読みをもう1文字増やしてください。</p>';
     return;
   }
   const items = data.candidates || [];
   if (!items.length) {
-    $('searchResult').innerHTML = '<p class="warn">そのよみの方は名簿にありません。' +
+    $('searchResult').innerHTML = '<p class="warn">その読みの方は名簿にありません。' +
       (allowSelfRegister ? '下の「名簿にお名前がない方はこちら」から登録できます。' : 'スタッフへお声がけください。') + '</p>';
     return;
   }
@@ -522,7 +581,7 @@ $('checkinButton').addEventListener('click', async () => {
   showComplete(data);
 });
 
-/* ---------- 出席する人をえらぶ（2人以上の世帯） ---------- */
+/* ---------- 出席する人を選ぶ（2人以上の世帯） ---------- */
 function renderFamily() {
   $('memberList').innerHTML = family.map(p =>
     '<button type="button" class="member" data-id="' + esc(p.id) + '"' +
@@ -549,16 +608,16 @@ function updateFamilyButton() {
   const n = pickedIds().length;
   const button = $('familyCheckinButton');
   button.disabled = n === 0;
-  button.textContent = n ? '出席する（' + n + '人）' : 'えらんでください';
+  button.textContent = n ? '出席する（' + n + '人）' : '選んでください';
 }
 function showFamilyResult(data) {
   const results = data.results || [];
   const fresh = results.filter(r => !r.already).map(r => r.fullName + ' さん');
   const already = results.filter(r => r.already).map(r => r.fullName + ' さん');
   let text = (fresh.length ? fresh : already).join('\n') + '\n' + (data.date || '');
-  if (fresh.length && already.length) text += '\n\n' + already.join('、') + 'は、すでに受付済みでした。';
+  if (fresh.length && already.length) text += '\n\n' + already.join('、') + 'は、既に受付済みでした。';
   $('lead').textContent = '受付が終わりました。そのまま画面を閉じて構いません。';
-  showDone(fresh.length ? '出席を受け付けました' : '本日はすでに受付済みです', text);
+  showDone(fresh.length ? '出席を受け付けました' : '本日は既に受付済みです', text);
 }
 $('familyCheckinButton').addEventListener('click', async () => {
   const ids = pickedIds();
@@ -591,7 +650,7 @@ async function openManage() {
   closeEdit();
   resetFamilyForm();
   renderManage();
-  $('lead').textContent = 'いっしょに来るご家族を登録します。';
+  $('lead').textContent = '一緒に来るご家族を登録します。';
   show('manage');
 }
 function resetFamilyForm() {
@@ -689,13 +748,13 @@ async function addFamily(confirmedNew) {
     showCandidates(data.candidates, payload);
     return;
   }
-  await afterFamilyChange(data.added.fullName + ' さんを、ご家族に追加しました。ほかにもいらっしゃれば、続けて追加できます。');
+  await afterFamilyChange(data.added.fullName + ' さんを、ご家族に追加しました。他にもいらっしゃれば、続けて追加できます。');
 }
-// すでに名簿にいる方を候補として出し、ご家族に加えるか、別の方として新しく登録するかをえらんでもらう
+// すでに名簿にいる方を候補として出し、ご家族に加えるか、別の方として新しく登録するかを選んでもらう
 function showCandidates(list, payload) {
   $('famCandidates').innerHTML = list.map((c, i) =>
     '<div class="warn" style="margin-top:16px">' +
-      '<p style="margin:0">' + esc(c.fullName) + ' さん（' + esc(c.kana || '') + '）は、すでに名簿に登録されています。ご家族に加えますか。' +
+      '<p style="margin:0">' + esc(c.fullName) + ' さん（' + esc(c.kana || '') + '）は、既に名簿に登録されています。ご家族に加えますか。' +
       (c.joining && c.joining.length ? '一緒に、' + esc(c.joining.join(' さん、')) + ' さんも加わります。' : '') + '</p>' +
       '<button type="button" class="join" data-i="' + i + '">' + esc(c.fullName) + ' さんをご家族に加える</button>' +
     '</div>').join('') +
@@ -727,7 +786,7 @@ async function start() {
   try {
     await liff.init({ liffId: LIFF_ID });
   } catch (e) {
-    fail('受付画面をひらけませんでした。LINEのアプリから開き直してください。');
+    fail('受付画面を開けませんでした。LINEのアプリから開き直してください。');
     return;
   }
   if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
