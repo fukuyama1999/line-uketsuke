@@ -1,0 +1,678 @@
+<!doctype html>
+<!-- 受付画面 修正版5（サーバーの修正版6と組み合わせて使う） -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>出席受付</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{--navy:#173b63;--blue:#1769aa;--bg:#f4f7fa;--text:#15202b;--muted:#5d6b78;
+        --line:#d8e0e8;--ok:#147c4b;--error:#b3261e}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-size:17px;line-height:1.7;
+       font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif}
+  main{max-width:560px;min-height:100vh;margin:auto;background:#fff;
+       padding:26px 18px calc(48px + env(safe-area-inset-bottom))}
+  h1{font-size:24px;margin:0 0 8px;color:var(--navy)}
+  h2{font-size:19px;margin:0 0 12px}
+  p{line-height:1.7;margin:0 0 12px}
+  .lead,.hint{color:var(--muted)}
+  .card{margin-top:22px;padding:20px;border:1px solid var(--line);border-radius:14px;background:#fff}
+  label{display:block;margin:16px 0 6px;font-weight:700}
+  input{width:100%;padding:15px;border:1.5px solid #aebdca;border-radius:9px;font-size:18px}
+  input:focus{outline:3px solid var(--blue);outline-offset:1px}
+  button{width:100%;margin-top:16px;padding:16px;border:0;border-radius:9px;
+         background:var(--blue);color:#fff;font-size:18px;font-weight:700;cursor:pointer}
+  button:disabled{background:#91a4b5;cursor:wait}
+  button.sub{background:#fff;border:1.5px solid var(--blue);color:var(--blue)}
+  button.quiet{background:none;color:var(--muted);font-size:15px;font-weight:400;
+               text-decoration:underline;padding:12px;margin-top:8px}
+  .big{min-height:96px;font-size:26px;letter-spacing:.06em}
+  .candidate{display:flex;justify-content:space-between;align-items:center;gap:10px;
+             width:100%;margin-top:10px;padding:18px 16px;border:1px solid var(--line);
+             border-radius:9px;background:#fff;color:var(--text);text-align:left;
+             font-size:19px;font-weight:700}
+  .candidate small{color:var(--muted);font-weight:400;font-size:14px;white-space:nowrap}
+  .candidate[data-done="1"]{opacity:.45}
+  .notice{padding:14px;border-radius:9px;background:#edf7f1;color:#125c3a}
+  .warn{padding:14px;border-radius:9px;background:#fff8e6;color:#7a5a10}
+  .error{padding:14px;border-radius:9px;background:#fff0ef;color:var(--error)}
+  .hidden{display:none!important}
+  .center{text-align:center}
+  .mark{font-size:56px;line-height:1;margin:8px 0 14px;color:var(--ok)}
+  .name{font-size:26px;font-weight:700;margin:6px 0 0}
+  .foot{margin-top:22px;font-size:14px;color:var(--muted)}
+  .idbox{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;word-break:break-all;
+         background:#f4f7fa;border:1px solid var(--line);border-radius:8px;padding:14px}
+
+  /* ---- 家族の受付（修正版3で追加） ---- */
+  /* 出席する人をえらぶ行。押すとチェックが付き、もう一度押すと外れる */
+  .member{display:flex;align-items:center;gap:14px;width:100%;margin-top:10px;padding:14px 16px;
+          min-height:64px;border:1.5px solid var(--line);border-radius:10px;background:#fff;
+          color:var(--text);text-align:left;font-size:20px;font-weight:700;cursor:pointer}
+  .member .box{flex:none;display:inline-flex;align-items:center;justify-content:center;
+               width:34px;height:34px;border:2px solid #aebdca;border-radius:8px;background:#fff;
+               color:#fff;font-size:22px;line-height:1}
+  .member .who{flex:1}
+  .member small{color:var(--muted);font-weight:400;font-size:14px;white-space:nowrap}
+  .member[aria-pressed="true"]{border-color:var(--blue);background:#eef5fb}
+  .member[aria-pressed="true"] .box{border-color:var(--blue);background:var(--blue)}
+  .member[aria-pressed="true"] .box::after{content:"✓"}
+  /* すでに受付済みの人。押せないようにして、緑のチェックで示す */
+  .member:disabled{background:#f4f7fa;color:var(--muted);cursor:default}
+  .member:disabled .box{border-color:var(--ok);background:#edf7f1;color:var(--ok)}
+  .member:disabled .box::after{content:"✓"}
+  .member:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+  /* 家族の登録画面の一覧 */
+  .famrow{display:flex;justify-content:space-between;align-items:center;gap:10px;
+          padding:12px 2px;border-bottom:1px solid var(--line);font-size:18px;font-weight:700}
+  .famrow small{color:var(--muted);font-weight:400;font-size:13px;white-space:nowrap}
+  button.mini{width:auto;flex:none;margin:0;padding:8px 16px;border:1.5px solid #e3b5b1;
+              background:#fff;color:var(--error);font-size:15px;font-weight:400}
+  #completeText{white-space:pre-line}
+</style>
+</head>
+<body>
+<main>
+  <h1>出席受付</h1>
+  <p class="lead" id="lead">受付内容を確認して、「出席する」を押してください。</p>
+
+  <!-- 読み込み中 -->
+  <section id="loading" class="card center"><p>LINEの情報を確認しています…</p></section>
+
+  <!-- 初回：台帳から探す -->
+  <section id="unlinked" class="card hidden">
+    <h2>初回登録</h2>
+    <p class="hint">お名前のよみを、はじめの2文字だけひらがなで入れてください。</p>
+    <label for="kana">ふりがな（姓のはじめ）</label>
+    <input id="kana" type="text" inputmode="kana" autocomplete="off" placeholder="例：やまだ">
+    <button id="searchButton" type="button">名前をさがす</button>
+    <div id="searchResult" aria-live="polite"></div>
+    <button id="toNewButton" class="quiet hidden" type="button">名簿にお名前がない方はこちら</button>
+    <p class="foot">うまくいかないときは、スタッフへお声がけください。</p>
+  </section>
+
+  <!-- 初回：自分で登録する -->
+  <section id="newreg" class="card hidden">
+    <h2>はじめての方の登録</h2>
+    <p class="hint">お名前を入れてください。ふりがなは自動で入ります。違っていたら直してください。</p>
+    <label for="surname">姓</label>
+    <input id="surname" type="text" autocomplete="off" placeholder="例：山田">
+    <label for="givenName">名</label>
+    <input id="givenName" type="text" autocomplete="off" placeholder="例：花子">
+    <label for="newKana">ふりがな</label>
+    <input id="newKana" type="text" inputmode="kana" autocomplete="off" placeholder="やまだ はなこ">
+    <button id="registerButton" type="button">この内容で登録する</button>
+    <div id="similarBox" aria-live="polite"></div>
+    <button id="backToSearch" class="quiet" type="button">名簿にお名前がある方はこちら</button>
+  </section>
+
+  <!-- 出席ボタン（1人だけの世帯） -->
+  <section id="checkin" class="card hidden">
+    <div class="center">
+      <p class="hint" id="checkinHint">登録済みの方です</p>
+      <p id="participantName" class="name"></p>
+    </div>
+    <div id="checkinFlash"></div>
+    <button id="checkinButton" class="big" type="button">出席する</button>
+    <p class="foot">同じ日に何度押しても、出席は重複しません。</p>
+    <button id="familyFromSingle" class="sub" type="button">ご家族を登録する</button>
+  </section>
+
+  <!-- 出席する人をえらぶ（2人以上の世帯） -->
+  <section id="family" class="card hidden">
+    <h2>どなたが出席していますか？</h2>
+    <p class="hint">出席している方を押して、チェックを付けてください。もう一度押すと外れます。</p>
+    <div id="memberList"></div>
+    <div id="familyFlash"></div>
+    <button id="familyCheckinButton" class="big" type="button">出席する</button>
+    <p class="foot">同じ日に何度押しても、出席は重複しません。</p>
+    <button id="familyFromList" class="sub" type="button">ご家族を登録する</button>
+  </section>
+
+  <!-- ご家族の登録 -->
+  <section id="manage" class="card hidden">
+    <h2>ご家族の登録</h2>
+    <p class="hint">いっしょに来るご家族を登録すると、受付の画面でまとめてえらべるようになります。登録したご家族は、ご家族のどなたのスマホからでも受付できます。</p>
+    <div id="manageList"></div>
+    <h2 style="margin-top:26px">ご家族を追加する</h2>
+    <p class="hint">お名前を入れてください。ふりがなは自動で入ります。違っていたら直してください。</p>
+    <label for="famSurname">姓</label>
+    <input id="famSurname" type="text" autocomplete="off" placeholder="例：山田">
+    <label for="famGiven">名</label>
+    <input id="famGiven" type="text" autocomplete="off" placeholder="例：花子">
+    <label for="famKana">ふりがな</label>
+    <input id="famKana" type="text" inputmode="kana" autocomplete="off" placeholder="例：やまだ はなこ">
+    <button id="famAddButton" type="button">この方を追加する</button>
+    <div id="famCandidates" aria-live="polite"></div>
+    <div id="famMsg" aria-live="polite"></div>
+    <button id="manageBack" class="sub" type="button">受付の画面にもどる</button>
+    <button id="leaveButton" class="quiet hidden" type="button">自分をこのご家族から外す</button>
+  </section>
+
+  <!-- 受付できない日 -->
+  <section id="closed" class="card hidden">
+    <div class="center"><p id="closedName" class="name"></p></div>
+    <p class="warn" id="closedText" style="margin-top:16px"></p>
+    <button id="familyFromClosed" class="sub" type="button">ご家族を登録する</button>
+  </section>
+
+  <!-- 完了 -->
+  <section id="complete" class="card hidden center">
+    <div class="mark">✓</div>
+    <h2 id="completeTitle">出席を受け付けました</h2>
+    <p id="completeText" class="notice"></p>
+    <button id="familyFromComplete" class="sub" type="button">ご家族を登録する</button>
+  </section>
+
+  <!-- エラー -->
+  <section id="errorBox" class="card hidden">
+    <h2>受付できませんでした</h2>
+    <p id="errorText" class="error"></p>
+    <button id="retryButton" class="sub" type="button">もう一度試す</button>
+  </section>
+
+</main>
+
+<script>
+'use strict';
+
+/* ---- 書き換えるのはこの2行だけ ---- */
+const LIFF_ID = '2011459385-7lJkDlr6';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwayo6o_NLYXy_8BrzYnWkHywaJb4ZEHycZAwmYdpz5hD-7F3qb4R0E3PbEWAA2sE1sPQ/exec';
+/* ---------------------------------- */
+
+const $ = (id) => document.getElementById(id);
+const SCREENS = ['loading','unlinked','newreg','checkin','family','manage','closed','complete','errorBox'];
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+
+let idToken = '';
+let allowSelfRegister = true;
+let firstScreen = 'register';
+let family = [];     // 同じ世帯の人（本人を含む）。サーバーの status が返す
+let me = {};         // 本人の姓とそのよみ。家族の登録で姓を先に入れておくのに使う
+let addedCount = 0;  // 家族の登録画面で、今回追加した人数
+let canLeave = false; // 自分がご家族から外れられるか（LINEで受付できる人がほかにいるとき）
+
+function show(id) {
+  SCREENS.forEach(x => $(x).classList.toggle('hidden', x !== id));
+  window.scrollTo(0, 0);
+}
+function fail(message) {
+  $('errorText').textContent = message || '通信に失敗しました。電波を確認して、もう一度お試しください。';
+  show('errorBox');
+}
+function busy(button, on, label) {
+  button.disabled = on;
+  if (on) { button.dataset.label = button.textContent; button.textContent = '処理中…'; }
+  else { button.textContent = button.dataset.label || label; }
+}
+
+/* ---------- サーバーとのやりとり ---------- */
+/* ok:false でも例外にせず、そのまま返す。判断は呼び出し側で行う。 */
+async function api(action, extra, attempt) {
+  extra = extra || {}; attempt = attempt || 0;
+  let text;
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST', redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action, idToken: idToken }, extra))
+    });
+    text = await res.text();
+  } catch (e) {
+    if (attempt < 3) { await sleep(900 + Math.random() * 1500); return api(action, extra, attempt + 1); }
+    return { ok: false, code: 'NET', message: '通信できませんでした。電波の良い場所でもう一度お試しください。' };
+  }
+  let data;
+  try { data = JSON.parse(text); }
+  catch (_) { return { ok: false, code: 'BADJSON', message: 'サーバーから正しい応答を受け取れませんでした。' }; }
+  if (data.code === 'RETRY' && attempt < 4) {
+    await sleep(800 + Math.random() * 2000);
+    return api(action, extra, attempt + 1);
+  }
+  return data;
+}
+
+/* ---------- 状態の読み込み ---------- */
+function applyStatus(data) {
+  canLeave = !!data.canLeave;
+  allowSelfRegister = data.allowSelfRegister !== false;
+  firstScreen = data.firstScreen || 'register';
+  family = data.family || [];
+  me = data.me || {};
+}
+
+async function loadStatus(flash) {
+  show('loading');
+  const data = await api('status');
+  if (!data.ok) { fail(data.message); return; }
+  applyStatus(data);
+
+  if (data.state === 'unlinked') {
+    $('lead').textContent = 'はじめての方は、お名前を登録してください。';
+    $('toNewButton').classList.toggle('hidden', !allowSelfRegister);
+    $('searchResult').innerHTML = '';
+    $('kana').value = '';
+    // 運用設定の「初回画面」で、最初に出す画面を切り替える
+    if (allowSelfRegister && firstScreen !== 'search') {
+      $('similarBox').innerHTML = '';
+      show('newreg');
+    } else {
+      show('unlinked');
+    }
+    return;
+  }
+
+  $('lead').textContent = '受付内容を確認して、「出席する」を押してください。';
+
+  if (!data.open) {
+    $('closedName').textContent = (data.fullName || '') + ' さん';
+    $('closedText').textContent = data.message || '本日は受付日ではありません。';
+    show('closed');
+    return;
+  }
+
+  // 2人以上の世帯では、出席している人をえらぶ画面を出す
+  if (family.length > 1) {
+    if (family.every(p => p.done)) {
+      $('lead').textContent = '受付は終わっています。そのまま画面を閉じて構いません。';
+      showDone('本日はすでに受付済みです',
+               family.map(p => p.fullName + ' さん').join('\n') + '\n' + (data.date || ''));
+      return;
+    }
+    $('lead').textContent = '出席している方をえらんで、「出席する」を押してください。';
+    renderFamily(flash);
+    show('family');
+    return;
+  }
+
+  if (data.state === 'done') {
+    showDone('本日はすでに受付済みです', (data.fullName || '') + ' さん　' + (data.date || ''));
+    return;
+  }
+
+  $('participantName').textContent = (data.fullName || '') + ' さん';
+  $('checkinFlash').innerHTML = flash ? '<p class="notice">' + esc(flash) + '</p>' : '';
+  show('checkin');
+}
+
+function showDone(title, text) {
+  $('completeTitle').textContent = title;
+  $('completeText').textContent = text;
+  show('complete');
+}
+
+function showComplete(data) {
+  showDone(data.already ? '本日はすでに受付済みです' : '出席を受け付けました',
+           (data.fullName || '') + ' さん　' + (data.date || ''));
+}
+
+/* ---------- 初回：台帳から探す ---------- */
+$('searchButton').addEventListener('click', async () => {
+  const kana = $('kana').value.trim();
+  if (kana.length < 2) {
+    $('searchResult').innerHTML = '<p class="error">ふりがなを2文字以上入れてください。</p>';
+    return;
+  }
+  const button = $('searchButton');
+  busy(button, true);
+  const data = await api('search', { kana: kana });
+  busy(button, false, '名前をさがす');
+
+  if (!data.ok) { $('searchResult').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+  if (data.tooMany) {
+    $('searchResult').innerHTML = '<p class="warn">候補が多すぎます。よみをもう1文字増やしてください。</p>';
+    return;
+  }
+  const items = data.candidates || [];
+  if (!items.length) {
+    $('searchResult').innerHTML = '<p class="warn">そのよみの方は名簿にありません。' +
+      (allowSelfRegister ? '下の「名簿にお名前がない方はこちら」から登録できます。' : 'スタッフへお声がけください。') + '</p>';
+    return;
+  }
+  $('searchResult').innerHTML = '<p class="hint" style="margin-top:14px">ご本人のお名前を押してください。</p>' +
+    items.map(x => '<button type="button" class="candidate" data-id="' + esc(x.id) + '">' +
+      '<span>' + esc(x.fullName) + '</span><small>' + esc(x.kana || '') + '</small></button>').join('');
+  document.querySelectorAll('#searchResult .candidate').forEach(b => {
+    b.addEventListener('click', () => link(b.dataset.id, b.querySelector('span').textContent));
+  });
+});
+
+async function link(participantId, displayName, names) {
+  if (!confirm(displayName + ' さんで登録します。よろしいですか。')) return;
+  show('loading');
+  // 家族が登録した行につなぐときは、入力したお名前でご本人かを確かめるので一緒に送る
+  const data = await api('link', Object.assign({ participantId: participantId }, names || {}));
+  if (!data.ok) { fail(data.message); return; }
+  if (data.checkedIn) { showComplete(data); return; }
+  await loadStatus('登録が完了しました。');
+}
+
+/* ---------- 初回：自分で登録する ---------- */
+$('toNewButton').addEventListener('click', () => {
+  $('similarBox').innerHTML = '';
+  show('newreg');
+  $('surname').focus();
+});
+$('backToSearch').addEventListener('click', () => { show('unlinked'); });
+
+/* 日本語入力の変換前のかなを拾って、ふりがな欄を自動で埋める。
+   ・変換中の途中経過のうち、かなだけでできている最後のものを、よみとして使う。
+     変換後の漢字が最後に届く入力方式でも、よみを取りこぼさないため。
+   ・確定した文字とそのよみを組にして覚え、名前の欄から消された文字のよみは外す。
+     打ち間違いを消しても、よみに余分な字が残らないようにするため。 */
+function toHira(s) {
+  return String(s || '').normalize('NFKC')
+    .replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+    .replace(/[^\u3041-\u3096\u30fc]/g, '');
+}
+function isKanaOnly(s) {
+  return /^[\u3041-\u3096\u30a1-\u30fa\u30fc]+$/.test(String(s || '').normalize('NFKC'));
+}
+function makeKanaFiller(seiInput, meiInput, kanaInput) {
+  const pieces = { sei: [], mei: [] };   // { text: 確定した文字, kana: そのよみ } の並び
+  let manual = false;
+  const kanaOf = (key) => pieces[key].map(p => p.kana).join('');
+  function sync() {
+    if (manual) return;
+    kanaInput.value = (kanaOf('sei') + ' ' + kanaOf('mei')).trim();
+  }
+  // 欄の先頭から順に、覚えている文字が並んでいる分だけを残す
+  function prune(input, key) {
+    let joined = '';
+    let keep = 0;
+    for (const p of pieces[key]) {
+      if (input.value.indexOf(joined + p.text) !== 0) break;
+      joined += p.text;
+      keep++;
+    }
+    pieces[key].length = keep;
+  }
+  function hook(input, key) {
+    let composing = '';
+    let before = '';
+    input.addEventListener('compositionstart', () => { composing = ''; before = input.value; });
+    input.addEventListener('compositionupdate', e => { if (isKanaOnly(e.data)) composing = e.data; });
+    input.addEventListener('compositionend', e => {
+      prune(input, key);
+      if (composing) {
+        // 確定した文字。届かない入力方式では、変換の前後の欄の差から求める
+        let text = e.data || '';
+        if (!text && input.value.indexOf(before) === 0) text = input.value.slice(before.length);
+        pieces[key].push({ text: text, kana: toHira(composing) });
+      }
+      composing = '';
+      sync();
+    });
+    input.addEventListener('input', e => {
+      if (e.isComposing) return;
+      prune(input, key);
+      sync();
+    });
+  }
+  hook(seiInput, 'sei');
+  hook(meiInput, 'mei');
+  kanaInput.addEventListener('input', () => { manual = true; });
+  return {
+    // 姓とそのよみを先に入れた状態からやり直す（家族の登録で、姓を先に入れておくとき）
+    reset(surname, surnameKana) {
+      pieces.sei = surname && surnameKana ? [{ text: surname, kana: surnameKana }] : [];
+      pieces.mei = [];
+      manual = false;
+      sync();
+    }
+  };
+}
+makeKanaFiller($('surname'), $('givenName'), $('newKana'));
+const familyKana = makeKanaFiller($('famSurname'), $('famGiven'), $('famKana'));
+
+$('registerButton').addEventListener('click', () => submitNew(false));
+
+async function submitNew(confirmedNew) {
+  const payload = {
+    surname: $('surname').value.trim(),
+    givenName: $('givenName').value.trim(),
+    kana: $('newKana').value.trim(),
+    confirmedNew: !!confirmedNew
+  };
+  const button = $('registerButton');
+  busy(button, true);
+  const data = await api('registerNew', payload);
+  busy(button, false, 'この内容で登録する');
+
+  if (!data.ok) { $('similarBox').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+
+  if (data.similar && data.similar.length) {
+    $('similarBox').innerHTML =
+      '<p class="warn" style="margin-top:16px">名簿に似たお名前があります。ご自分のお名前があれば、そちらを押してください。</p>' +
+      data.similar.map(x => '<button type="button" class="candidate" data-id="' + esc(x.id) + '">' +
+        '<span>' + esc(x.fullName) + '</span><small>' + esc(x.kana || '') + '</small></button>').join('') +
+      '<button type="button" class="sub" id="forceNew">この中にいない。新しく登録する</button>';
+    document.querySelectorAll('#similarBox .candidate').forEach(b => {
+      b.addEventListener('click', () => link(b.dataset.id, b.querySelector('span').textContent,
+        { surname: payload.surname, givenName: payload.givenName, kana: payload.kana }));
+    });
+    $('forceNew').addEventListener('click', () => submitNew(true));
+    return;
+  }
+
+  if (data.checkedIn) { showComplete(data); return; }
+  await loadStatus('登録が完了しました。');
+}
+
+/* ---------- 出席する（1人だけの世帯） ---------- */
+$('checkinButton').addEventListener('click', async () => {
+  const button = $('checkinButton');
+  busy(button, true);
+  const data = await api('checkin');
+  busy(button, false, '出席する');
+  if (!data.ok) {
+    if (data.code === 'UNLINKED') { await loadStatus(); return; }
+    fail(data.message);
+    return;
+  }
+  showComplete(data);
+});
+
+/* ---------- 出席する人をえらぶ（2人以上の世帯） ---------- */
+function renderFamily(flash) {
+  $('memberList').innerHTML = family.map(p =>
+    '<button type="button" class="member" data-id="' + esc(p.id) + '"' +
+      ' aria-pressed="' + (p.self && !p.done ? 'true' : 'false') + '"' + (p.done ? ' disabled' : '') + '>' +
+      '<span class="box" aria-hidden="true"></span>' +
+      '<span class="who">' + esc(p.fullName) + ' さん</span>' +
+      (p.done ? '<small>受付済み</small>' : (p.self ? '<small>ご本人</small>' : '')) +
+    '</button>'
+  ).join('');
+  document.querySelectorAll('#memberList .member').forEach(b => {
+    b.addEventListener('click', () => {
+      if (b.disabled) return;
+      b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      updateFamilyButton();
+    });
+  });
+  $('familyFlash').innerHTML = flash ? '<p class="notice" style="margin-top:14px">' + esc(flash) + '</p>' : '';
+  updateFamilyButton();
+}
+function pickedIds() {
+  return Array.from(document.querySelectorAll('#memberList .member[aria-pressed="true"]'))
+    .map(b => b.dataset.id);
+}
+function updateFamilyButton() {
+  const n = pickedIds().length;
+  const button = $('familyCheckinButton');
+  button.disabled = n === 0;
+  button.textContent = n ? '出席する（' + n + '人）' : 'えらんでください';
+}
+function showFamilyResult(data) {
+  const results = data.results || [];
+  const fresh = results.filter(r => !r.already).map(r => r.fullName + ' さん');
+  const already = results.filter(r => r.already).map(r => r.fullName + ' さん');
+  let text = (fresh.length ? fresh : already).join('\n') + '\n' + (data.date || '');
+  if (fresh.length && already.length) text += '\n\n' + already.join('、') + 'は、すでに受付済みでした。';
+  $('lead').textContent = '受付が終わりました。そのまま画面を閉じて構いません。';
+  showDone(fresh.length ? '出席を受け付けました' : '本日はすでに受付済みです', text);
+}
+$('familyCheckinButton').addEventListener('click', async () => {
+  const ids = pickedIds();
+  if (!ids.length) return;
+  const button = $('familyCheckinButton');
+  busy(button, true);
+  const data = await api('checkinMany', { ids: ids });
+  busy(button, false);
+  updateFamilyButton();
+  if (!data.ok) {
+    // 受付時間が過ぎた、家族の登録が変わった、などは状態を読み直して画面に出す
+    if (data.code === 'UNLINKED' || data.code === 'CLOSED' || data.code === 'FORBIDDEN') { await loadStatus(); return; }
+    fail(data.message);
+    return;
+  }
+  showFamilyResult(data);
+});
+
+/* ---------- ご家族の登録 ---------- */
+async function openManage() {
+  show('loading');
+  const data = await api('status');
+  if (!data.ok) { fail(data.message); return; }
+  applyStatus(data);
+  if (data.state === 'unlinked') { await loadStatus(); return; }
+  addedCount = 0;
+  $('famMsg').innerHTML = '';
+  $('famCandidates').innerHTML = '';
+  resetFamilyForm();
+  renderManage();
+  $('lead').textContent = 'いっしょに来るご家族を登録します。';
+  show('manage');
+}
+function resetFamilyForm() {
+  // 姓とそのよみが分かっていれば、姓を先に入れておく（名だけ打てば済むように）
+  const surname = me.surname && me.surnameKana ? me.surname : '';
+  $('famSurname').value = surname;
+  $('famGiven').value = '';
+  familyKana.reset(surname, surname ? toHira(me.surnameKana) : '');
+}
+function renderManage() {
+  const others = family.filter(p => !p.self);
+  $('leaveButton').classList.toggle('hidden', !canLeave);
+  if (!others.length) {
+    $('manageList').innerHTML = '<p class="hint">まだご家族は登録されていません。</p>';
+    return;
+  }
+  $('manageList').innerHTML = '<p class="hint" style="margin-bottom:4px">登録済みのご家族</p>' +
+    others.map(p => '<div class="famrow"><span>' + esc(p.fullName) + ' さん' +
+      (p.ownLine ? '<br><small>ご自分のLINEでも受付できます</small>' : '') + '</span>' +
+      '<button type="button" class="mini" data-id="' + esc(p.id) + '" data-name="' + esc(p.fullName) +
+      '" data-line="' + (p.ownLine ? '1' : '0') + '">外す</button></div>').join('');
+  document.querySelectorAll('#manageList .mini').forEach(b => {
+    b.addEventListener('click', async () => {
+      const name = b.dataset.name;
+      const text = b.dataset.line === '1'
+        ? name + ' さんを、ご家族から外します。' + name + ' さんは、ご自分のLINEで受付できます。よろしいですか。'
+        : name + ' さんを、ご家族の一覧から外します。よろしいですか。';
+      if (!confirm(text)) return;
+      b.disabled = true;
+      const r = await api('familyRemove', { participantId: b.dataset.id });
+      if (!r.ok) { alert(r.message); b.disabled = false; return; }
+      $('famMsg').innerHTML = '';
+      await refreshFamily();
+      renderManage();
+    });
+  });
+}
+async function refreshFamily() {
+  const data = await api('status');
+  if (data.ok) applyStatus(data);
+}
+function familyPayload() {
+  return {
+    surname: $('famSurname').value.trim(),
+    givenName: $('famGiven').value.trim(),
+    kana: $('famKana').value.trim()
+  };
+}
+async function afterFamilyChange(message) {
+  addedCount++;
+  $('famCandidates').innerHTML = '';
+  $('famMsg').innerHTML = '<p class="notice">' + esc(message) + '</p>';
+  await refreshFamily();
+  resetFamilyForm();
+  renderManage();
+}
+async function addFamily(confirmedNew) {
+  const payload = familyPayload();
+  const button = $('famAddButton');
+  busy(button, true);
+  const data = await api('familyAdd', Object.assign({ confirmedNew: !!confirmedNew }, payload));
+  busy(button, false, 'この方を追加する');
+  $('famCandidates').innerHTML = '';
+  if (!data.ok) { $('famMsg').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+  if (data.candidates && data.candidates.length) {
+    $('famMsg').innerHTML = '';
+    showCandidates(data.candidates, payload);
+    return;
+  }
+  await afterFamilyChange(data.added.fullName + ' さんを追加しました。ほかにもいらっしゃれば、続けて追加できます。');
+}
+// すでに名簿にいる方を候補として出し、ご家族に加えるか、別の方として新しく登録するかをえらんでもらう
+function showCandidates(list, payload) {
+  $('famCandidates').innerHTML = list.map((c, i) =>
+    '<div class="warn" style="margin-top:16px">' +
+      '<p style="margin:0">' + esc(c.fullName) + ' さん（' + esc(c.kana || '') + '）は、すでに名簿に登録されています。ご家族に加えますか。' +
+      (c.joining && c.joining.length ? '一緒に、' + esc(c.joining.join(' さん、')) + ' さんも加わります。' : '') + '</p>' +
+      '<button type="button" class="join" data-i="' + i + '">' + esc(c.fullName) + ' さんをご家族に加える</button>' +
+    '</div>').join('') +
+    '<button type="button" class="sub" id="forceNewFamily">別の方です。新しく登録する</button>';
+  document.querySelectorAll('#famCandidates .join').forEach(b => {
+    b.addEventListener('click', () => joinFamily(list[Number(b.dataset.i)], payload, b));
+  });
+  $('forceNewFamily').addEventListener('click', () => addFamily(true));
+}
+async function joinFamily(candidate, payload, button) {
+  busy(button, true);
+  const data = await api('familyJoin', Object.assign({ participantId: candidate.id }, payload));
+  busy(button, false);
+  if (!data.ok) { $('famMsg').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+  await afterFamilyChange(data.joined.join(' さん、') + ' さんをご家族に加えました。次からは、ご家族のどなたのスマホからでも、まとめて受付できます。');
+}
+$('famAddButton').addEventListener('click', () => addFamily(false));
+$('leaveButton').addEventListener('click', async () => {
+  if (!confirm('ご自分を、このご家族から外します。ご自分の受付は、これまでどおりできます。よろしいですか。')) return;
+  const button = $('leaveButton');
+  button.disabled = true;
+  const r = await api('familyLeave');
+  button.disabled = false;
+  if (!r.ok) { $('famMsg').innerHTML = '<p class="error">' + esc(r.message) + '</p>'; return; }
+  await loadStatus('ご家族から外れました。');
+});
+$('manageBack').addEventListener('click', () =>
+  loadStatus(addedCount ? 'ご家族を登録しました。出席している方をえらんでください。' : ''));
+$('familyFromSingle').addEventListener('click', openManage);
+$('familyFromList').addEventListener('click', openManage);
+$('familyFromClosed').addEventListener('click', openManage);
+$('familyFromComplete').addEventListener('click', openManage);
+
+$('retryButton').addEventListener('click', () => start());
+
+/* ---------- 起動 ---------- */
+async function start() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+  } catch (e) {
+    fail('受付画面をひらけませんでした。LINEのアプリから開き直してください。');
+    return;
+  }
+  if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
+  idToken = liff.getIDToken();
+  if (!idToken) { liff.login({ redirectUri: location.href }); return; }
+  await loadStatus();
+}
+
+start();
+</script>
+</body>
+</html>
