@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- 受付画面 修正版5（サーバーの修正版6と組み合わせて使う） -->
+<!-- 受付画面 修正版7（サーバーの修正版8と組み合わせて使う） -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -18,6 +18,9 @@
   h2{font-size:19px;margin:0 0 12px}
   p{line-height:1.7;margin:0 0 12px}
   .lead,.hint{color:var(--muted)}
+  /* 見出し、説明、お知らせは中央に寄せる。
+     入力欄、名前の一覧、候補の行は、左から読むほうが目で追いやすいので左寄せのまま */
+  h1,h2,.lead,.hint,.foot,.notice,.warn,.error{text-align:center}
   .card{margin-top:22px;padding:20px;border:1px solid var(--line);border-radius:14px;background:#fff}
   label{display:block;margin:16px 0 6px;font-weight:700}
   input{width:100%;padding:15px;border:1.5px solid #aebdca;border-radius:9px;font-size:18px}
@@ -68,15 +71,17 @@
   .famrow{display:flex;justify-content:space-between;align-items:center;gap:10px;
           padding:12px 2px;border-bottom:1px solid var(--line);font-size:18px;font-weight:700}
   .famrow small{color:var(--muted);font-weight:400;font-size:13px;white-space:nowrap}
-  button.mini{width:auto;flex:none;margin:0;padding:8px 16px;border:1.5px solid #e3b5b1;
-              background:#fff;color:var(--error);font-size:15px;font-weight:400}
+  button.mini{width:auto;flex:none;margin:0;padding:8px 16px;border:1.5px solid var(--blue);
+              background:#fff;color:var(--blue);font-size:15px;font-weight:700}
   #completeText{white-space:pre-line}
+  .saved strong{display:block;font-size:18px;margin-bottom:2px}
 </style>
 </head>
 <body>
 <main>
   <h1>出席受付</h1>
   <p class="lead" id="lead">受付内容を確認して、「出席する」を押してください。</p>
+  <div id="flash" aria-live="polite"></div>
 
   <!-- 読み込み中 -->
   <section id="loading" class="card center"><p>LINEの情報を確認しています…</p></section>
@@ -114,7 +119,6 @@
       <p class="hint" id="checkinHint">登録済みの方です</p>
       <p id="participantName" class="name"></p>
     </div>
-    <div id="checkinFlash"></div>
     <button id="checkinButton" class="big" type="button">出席する</button>
     <p class="foot">同じ日に何度押しても、出席は重複しません。</p>
     <button id="familyFromSingle" class="sub" type="button">ご家族を登録する</button>
@@ -125,7 +129,6 @@
     <h2>どなたが出席していますか？</h2>
     <p class="hint">出席している方を押して、チェックを付けてください。もう一度押すと外れます。</p>
     <div id="memberList"></div>
-    <div id="familyFlash"></div>
     <button id="familyCheckinButton" class="big" type="button">出席する</button>
     <p class="foot">同じ日に何度押しても、出席は重複しません。</p>
     <button id="familyFromList" class="sub" type="button">ご家族を登録する</button>
@@ -136,19 +139,37 @@
     <h2>ご家族の登録</h2>
     <p class="hint">いっしょに来るご家族を登録すると、受付の画面でまとめてえらべるようになります。登録したご家族は、ご家族のどなたのスマホからでも受付できます。</p>
     <div id="manageList"></div>
-    <h2 style="margin-top:26px">ご家族を追加する</h2>
-    <p class="hint">お名前を入れてください。ふりがなは自動で入ります。違っていたら直してください。</p>
-    <label for="famSurname">姓</label>
-    <input id="famSurname" type="text" autocomplete="off" placeholder="例：山田">
-    <label for="famGiven">名</label>
-    <input id="famGiven" type="text" autocomplete="off" placeholder="例：花子">
-    <label for="famKana">ふりがな</label>
-    <input id="famKana" type="text" inputmode="kana" autocomplete="off" placeholder="例：やまだ はなこ">
-    <button id="famAddButton" type="button">この方を追加する</button>
-    <div id="famCandidates" aria-live="polite"></div>
-    <div id="famMsg" aria-live="polite"></div>
+    <div id="listMsg" aria-live="polite"></div>
+    <!-- お名前の修正 -->
+    <div id="editBox" class="hidden">
+      <h2 id="editTitle" style="margin-top:26px">お名前を修正する</h2>
+      <p class="hint">お名前を直して、「この内容で保存する」を押してください。これまでの出席の記録は、そのまま残ります。</p>
+      <label for="editSurname">姓</label>
+      <input id="editSurname" type="text" autocomplete="off">
+      <label for="editGiven">名</label>
+      <input id="editGiven" type="text" autocomplete="off">
+      <label for="editKana">ふりがな</label>
+      <input id="editKana" type="text" inputmode="kana" autocomplete="off">
+      <button id="editSave" type="button">この内容で保存する</button>
+      <button id="editCancel" class="sub" type="button">やめる</button>
+      <div id="editMsg" aria-live="polite"></div>
+    </div>
+    <!-- ご家族の追加 -->
+    <div id="addBox">
+      <h2 style="margin-top:26px">ご家族を追加する</h2>
+      <p class="hint">お名前を入れてください。ふりがなは自動で入ります。違っていたら直してください。</p>
+      <label for="famSurname">姓</label>
+      <input id="famSurname" type="text" autocomplete="off" placeholder="例：山田">
+      <label for="famGiven">名</label>
+      <input id="famGiven" type="text" autocomplete="off" placeholder="例：花子">
+      <label for="famKana">ふりがな</label>
+      <input id="famKana" type="text" inputmode="kana" autocomplete="off" placeholder="例：やまだ はなこ">
+      <button id="famAddButton" type="button">この方を追加する</button>
+      <div id="famCandidates" aria-live="polite"></div>
+      <div id="famMsg" aria-live="polite"></div>
+    </div>
     <button id="manageBack" class="sub" type="button">受付の画面にもどる</button>
-    <button id="leaveButton" class="quiet hidden" type="button">自分をこのご家族から外す</button>
+    <p class="foot">ご家族を外したいときは、スタッフへお声がけください。</p>
   </section>
 
   <!-- 受付できない日 -->
@@ -194,12 +215,18 @@ let allowSelfRegister = true;
 let firstScreen = 'register';
 let family = [];     // 同じ世帯の人（本人を含む）。サーバーの status が返す
 let me = {};         // 本人の姓とそのよみ。家族の登録で姓を先に入れておくのに使う
-let addedCount = 0;  // 家族の登録画面で、今回追加した人数
-let canLeave = false; // 自分がご家族から外れられるか（LINEで受付できる人がほかにいるとき）
+let changedCount = 0; // 家族の登録画面で、今回保存した回数（追加、加える、修正）
+let editing = null;   // お名前を修正している方
 
-function show(id) {
+function show(id, keepFlash) {
   SCREENS.forEach(x => $(x).classList.toggle('hidden', x !== id));
+  // 「保存しました」のお知らせは、状態を読み込んだ直後の画面にだけ出し、ほかの画面へ移れば消す
+  if (!keepFlash) $('flash').innerHTML = '';
   window.scrollTo(0, 0);
+}
+// 保存が終わったことを示すお知らせ。サーバーがスプレッドシートに書き終えて応答してから出す
+function savedHtml(text) {
+  return '<p class="notice saved" style="margin-top:14px"><strong>✓ 保存しました</strong>' + esc(text) + '</p>';
 }
 function fail(message) {
   $('errorText').textContent = message || '通信に失敗しました。電波を確認して、もう一度お試しください。';
@@ -239,7 +266,6 @@ async function api(action, extra, attempt) {
 
 /* ---------- 状態の読み込み ---------- */
 function applyStatus(data) {
-  canLeave = !!data.canLeave;
   allowSelfRegister = data.allowSelfRegister !== false;
   firstScreen = data.firstScreen || 'register';
   family = data.family || [];
@@ -268,11 +294,13 @@ async function loadStatus(flash) {
   }
 
   $('lead').textContent = '受付内容を確認して、「出席する」を押してください。';
+  $('flash').innerHTML = flash ? savedHtml(flash) : '';
 
   if (!data.open) {
+    $('lead').textContent = '出席の受付ができるのは、受付時間のあいだです。';
     $('closedName').textContent = (data.fullName || '') + ' さん';
     $('closedText').textContent = data.message || '本日は受付日ではありません。';
-    show('closed');
+    show('closed', true);
     return;
   }
 
@@ -281,29 +309,28 @@ async function loadStatus(flash) {
     if (family.every(p => p.done)) {
       $('lead').textContent = '受付は終わっています。そのまま画面を閉じて構いません。';
       showDone('本日はすでに受付済みです',
-               family.map(p => p.fullName + ' さん').join('\n') + '\n' + (data.date || ''));
+               family.map(p => p.fullName + ' さん').join('\n') + '\n' + (data.date || ''), true);
       return;
     }
     $('lead').textContent = '出席している方をえらんで、「出席する」を押してください。';
-    renderFamily(flash);
-    show('family');
+    renderFamily();
+    show('family', true);
     return;
   }
 
   if (data.state === 'done') {
-    showDone('本日はすでに受付済みです', (data.fullName || '') + ' さん　' + (data.date || ''));
+    showDone('本日はすでに受付済みです', (data.fullName || '') + ' さん　' + (data.date || ''), true);
     return;
   }
 
   $('participantName').textContent = (data.fullName || '') + ' さん';
-  $('checkinFlash').innerHTML = flash ? '<p class="notice">' + esc(flash) + '</p>' : '';
-  show('checkin');
+  show('checkin', true);
 }
 
-function showDone(title, text) {
+function showDone(title, text, keepFlash) {
   $('completeTitle').textContent = title;
   $('completeText').textContent = text;
-  show('complete');
+  show('complete', keepFlash);
 }
 
 function showComplete(data) {
@@ -424,11 +451,28 @@ function makeKanaFiller(seiInput, meiInput, kanaInput) {
       pieces.mei = [];
       manual = false;
       sync();
+    },
+    // 登録済みのお名前とふりがなから始める（お名前の修正）。
+    // ふりがなを姓と名に切り分けられないときや、カタカナで入っているときは、自動では書き換えない
+    load(surname, givenName, kana) {
+      const parts = String(kana || '').trim().split(/\s+/);
+      if (surname && givenName && parts.length === 2 && parts[0] !== parts[1] && !/[\u30a1-\u30fa]/.test(kana)) {
+        pieces.sei = [{ text: surname, kana: parts[0] }];
+        pieces.mei = [{ text: givenName, kana: parts[1] }];
+        manual = false;
+        sync();
+      } else {
+        pieces.sei = [];
+        pieces.mei = [];
+        manual = true;
+        kanaInput.value = kana || '';
+      }
     }
   };
 }
 makeKanaFiller($('surname'), $('givenName'), $('newKana'));
 const familyKana = makeKanaFiller($('famSurname'), $('famGiven'), $('famKana'));
+const editKana = makeKanaFiller($('editSurname'), $('editGiven'), $('editKana'));
 
 $('registerButton').addEventListener('click', () => submitNew(false));
 
@@ -479,7 +523,7 @@ $('checkinButton').addEventListener('click', async () => {
 });
 
 /* ---------- 出席する人をえらぶ（2人以上の世帯） ---------- */
-function renderFamily(flash) {
+function renderFamily() {
   $('memberList').innerHTML = family.map(p =>
     '<button type="button" class="member" data-id="' + esc(p.id) + '"' +
       ' aria-pressed="' + (p.self && !p.done ? 'true' : 'false') + '"' + (p.done ? ' disabled' : '') + '>' +
@@ -495,7 +539,6 @@ function renderFamily(flash) {
       updateFamilyButton();
     });
   });
-  $('familyFlash').innerHTML = flash ? '<p class="notice" style="margin-top:14px">' + esc(flash) + '</p>' : '';
   updateFamilyButton();
 }
 function pickedIds() {
@@ -541,9 +584,11 @@ async function openManage() {
   if (!data.ok) { fail(data.message); return; }
   applyStatus(data);
   if (data.state === 'unlinked') { await loadStatus(); return; }
-  addedCount = 0;
+  changedCount = 0;
   $('famMsg').innerHTML = '';
+  $('listMsg').innerHTML = '';
   $('famCandidates').innerHTML = '';
+  closeEdit();
   resetFamilyForm();
   renderManage();
   $('lead').textContent = 'いっしょに来るご家族を登録します。';
@@ -558,32 +603,59 @@ function resetFamilyForm() {
 }
 function renderManage() {
   const others = family.filter(p => !p.self);
-  $('leaveButton').classList.toggle('hidden', !canLeave);
-  if (!others.length) {
-    $('manageList').innerHTML = '<p class="hint">まだご家族は登録されていません。</p>';
-    return;
-  }
-  $('manageList').innerHTML = '<p class="hint" style="margin-bottom:4px">登録済みのご家族</p>' +
-    others.map(p => '<div class="famrow"><span>' + esc(p.fullName) + ' さん' +
-      (p.ownLine ? '<br><small>ご自分のLINEでも受付できます</small>' : '') + '</span>' +
-      '<button type="button" class="mini" data-id="' + esc(p.id) + '" data-name="' + esc(p.fullName) +
-      '" data-line="' + (p.ownLine ? '1' : '0') + '">外す</button></div>').join('');
+  $('manageList').innerHTML = '<p class="hint" style="margin-bottom:4px">登録済みの方</p>' +
+    family.map(p => '<div class="famrow"><span>' + esc(p.fullName) + ' さん' +
+      (p.self ? '<br><small>ご本人</small>' : (p.ownLine ? '<br><small>ご自分のLINEでも受付できます</small>' : '')) + '</span>' +
+      (p.editable ? '<button type="button" class="mini" data-id="' + esc(p.id) + '">修正する</button>' : '') +
+      '</div>').join('') +
+    (others.length ? '' : '<p class="hint" style="margin-top:12px">ご家族はまだ登録されていません。</p>');
   document.querySelectorAll('#manageList .mini').forEach(b => {
-    b.addEventListener('click', async () => {
-      const name = b.dataset.name;
-      const text = b.dataset.line === '1'
-        ? name + ' さんを、ご家族から外します。' + name + ' さんは、ご自分のLINEで受付できます。よろしいですか。'
-        : name + ' さんを、ご家族の一覧から外します。よろしいですか。';
-      if (!confirm(text)) return;
-      b.disabled = true;
-      const r = await api('familyRemove', { participantId: b.dataset.id });
-      if (!r.ok) { alert(r.message); b.disabled = false; return; }
-      $('famMsg').innerHTML = '';
-      await refreshFamily();
-      renderManage();
-    });
+    b.addEventListener('click', () => openEdit(family.find(p => p.id === b.dataset.id)));
   });
 }
+// お名前の修正。台帳の同じ行を書き換えるので、参加者IDと出席の記録はそのまま残る
+function openEdit(p) {
+  if (!p) return;
+  editing = p;
+  $('editTitle').textContent = p.fullName + ' さんのお名前を修正する';
+  $('editSurname').value = p.surname || '';
+  $('editGiven').value = p.givenName || '';
+  editKana.load(p.surname || '', p.givenName || '', p.kana || '');
+  ['editMsg', 'listMsg', 'famMsg', 'famCandidates'].forEach(id => { $(id).innerHTML = ''; });
+  $('editBox').classList.remove('hidden');
+  $('addBox').classList.add('hidden');
+  if ($('editBox').scrollIntoView) $('editBox').scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+function closeEdit() {
+  editing = null;
+  $('editBox').classList.add('hidden');
+  $('addBox').classList.remove('hidden');
+}
+$('editCancel').addEventListener('click', closeEdit);
+$('editSave').addEventListener('click', async () => {
+  if (!editing) return;
+  const payload = {
+    participantId: editing.id,
+    surname: $('editSurname').value.trim(),
+    givenName: $('editGiven').value.trim(),
+    kana: $('editKana').value.trim()
+  };
+  const button = $('editSave');
+  busy(button, true);
+  const data = await api('familyEdit', payload);
+  busy(button, false, 'この内容で保存する');
+  if (!data.ok) { $('editMsg').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+  closeEdit();
+  if (data.unchanged) {
+    $('listMsg').innerHTML = '<p class="notice" style="margin-top:14px">お名前は変わっていません。</p>';
+    return;
+  }
+  changedCount++;
+  await refreshFamily();
+  resetFamilyForm();
+  renderManage();
+  $('listMsg').innerHTML = savedHtml(data.fullName + ' さんのお名前を修正しました。');
+});
 async function refreshFamily() {
   const data = await api('status');
   if (data.ok) applyStatus(data);
@@ -596,9 +668,10 @@ function familyPayload() {
   };
 }
 async function afterFamilyChange(message) {
-  addedCount++;
+  changedCount++;
   $('famCandidates').innerHTML = '';
-  $('famMsg').innerHTML = '<p class="notice">' + esc(message) + '</p>';
+  $('listMsg').innerHTML = '';
+  $('famMsg').innerHTML = savedHtml(message);
   await refreshFamily();
   resetFamilyForm();
   renderManage();
@@ -616,7 +689,7 @@ async function addFamily(confirmedNew) {
     showCandidates(data.candidates, payload);
     return;
   }
-  await afterFamilyChange(data.added.fullName + ' さんを追加しました。ほかにもいらっしゃれば、続けて追加できます。');
+  await afterFamilyChange(data.added.fullName + ' さんを、ご家族に追加しました。ほかにもいらっしゃれば、続けて追加できます。');
 }
 // すでに名簿にいる方を候補として出し、ご家族に加えるか、別の方として新しく登録するかをえらんでもらう
 function showCandidates(list, payload) {
@@ -640,17 +713,8 @@ async function joinFamily(candidate, payload, button) {
   await afterFamilyChange(data.joined.join(' さん、') + ' さんをご家族に加えました。次からは、ご家族のどなたのスマホからでも、まとめて受付できます。');
 }
 $('famAddButton').addEventListener('click', () => addFamily(false));
-$('leaveButton').addEventListener('click', async () => {
-  if (!confirm('ご自分を、このご家族から外します。ご自分の受付は、これまでどおりできます。よろしいですか。')) return;
-  const button = $('leaveButton');
-  button.disabled = true;
-  const r = await api('familyLeave');
-  button.disabled = false;
-  if (!r.ok) { $('famMsg').innerHTML = '<p class="error">' + esc(r.message) + '</p>'; return; }
-  await loadStatus('ご家族から外れました。');
-});
 $('manageBack').addEventListener('click', () =>
-  loadStatus(addedCount ? 'ご家族を登録しました。出席している方をえらんでください。' : ''));
+  loadStatus(changedCount ? 'ご家族の登録を更新しました。' : ''));
 $('familyFromSingle').addEventListener('click', openManage);
 $('familyFromList').addEventListener('click', openManage);
 $('familyFromClosed').addEventListener('click', openManage);
