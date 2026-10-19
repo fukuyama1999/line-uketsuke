@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- 受付画面 修正版8（サーバーの修正版8以降と組み合わせて使う） -->
+<!-- 受付画面 修正版9（サーバーの修正版15以降と組み合わせて使う） -->
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -74,6 +74,17 @@
   button.mini{width:auto;flex:none;margin:0;padding:8px 16px;border:1.5px solid var(--blue);
               background:#fff;color:var(--blue);font-size:15px;font-weight:700}
   #completeText{white-space:pre-line}
+
+  /* ---- 確認のお願い（修正版9で追加） ---- */
+  /* 受付の画面の上に出す帯。「？」だけでは気付きにくいので、文とボタンを並べる */
+  .ask{display:flex;align-items:center;gap:12px;margin-top:18px;padding:14px 16px;
+       border:1.5px solid #e2b33c;border-radius:12px;background:#fff8e6;color:#5c4300}
+  .ask .qmark{flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;
+              border-radius:50%;background:#b07a00;color:#fff;font-size:22px;font-weight:700;line-height:1}
+  .ask p{flex:1;margin:0;font-weight:700;text-align:left}
+  .ask button{width:auto;flex:none;margin:0;padding:10px 18px;font-size:16px;background:#b07a00}
+  #askQuestion{font-size:21px;font-weight:700;text-align:center;margin:10px 0 4px}
+  .answer{min-height:64px;font-size:21px}
   .saved strong{display:block;font-size:18px;margin-bottom:2px}
   /* 日本語の改行。言葉の途中（「登」と「録」のあいだなど）では改行せず、
      スクリプトが入れる文節の切れ目の印と、空白、句読点のところでだけ改行する。
@@ -86,6 +97,13 @@
   <h1>出席受付</h1>
   <p class="lead" id="lead">受付内容を確認して、「出席する」を押してください。</p>
   <div id="flash" aria-live="polite"></div>
+
+  <!-- 確認のお願いの帯（修正版9で追加）。確認リストに答えのない質問があるときだけ出す -->
+  <div id="qBanner" class="ask hidden">
+    <span class="qmark" aria-hidden="true">？</span>
+    <p>確認のお願いがあります（<span id="qCount">1</span>件）</p>
+    <button id="qOpen" type="button">答える</button>
+  </div>
 
   <!-- 読み込み中 -->
   <section id="loading" class="card center"><p>LINEの情報を確認しています…</p></section>
@@ -191,6 +209,16 @@
     <button id="familyFromComplete" class="sub" type="button">ご家族を登録する</button>
   </section>
 
+  <!-- 確認のお願い（修正版9で追加）。1問ずつ答える -->
+  <section id="ask" class="card hidden">
+    <h2 class="center">確認のお願い</h2>
+    <p class="hint" id="askLead"></p>
+    <p id="askQuestion"></p>
+    <div id="askButtons"></div>
+    <div id="askMsg" aria-live="polite"></div>
+    <button id="askLater" class="quiet" type="button">あとで答える</button>
+  </section>
+
   <!-- エラー -->
   <section id="errorBox" class="card hidden">
     <h2>受付できませんでした</h2>
@@ -209,7 +237,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbwayo6o_NLYXy_8BrzYnWkH
 /* ---------------------------------- */
 
 const $ = (id) => document.getElementById(id);
-const SCREENS = ['loading','unlinked','newreg','checkin','family','manage','closed','complete','errorBox'];
+const SCREENS = ['loading','unlinked','newreg','checkin','family','manage','closed','complete','ask','errorBox'];
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const esc = (s) => String(s == null ? '' : s)
   .replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -221,9 +249,12 @@ let family = [];     // 同じ世帯の人（本人を含む）。サーバー�
 let me = {};         // 本人の姓とそのよみ。家族の登録で姓を先に入れておくのに使う
 let changedCount = 0; // 家族の登録画面で、今回保存した回数（追加、加える、修正）
 let editing = null;   // お名前を修正している方
+let questions = [];   // 確認のお願い（修正版9）。サーバーの status が返す、まだ答えのない質問
+let editFromAsk = false; // 確認のお願いから、お名前と読みを直す画面を開いたとき
 
 function show(id, keepFlash) {
   SCREENS.forEach(x => $(x).classList.toggle('hidden', x !== id));
+  updateBanner(id);
   // 「保存しました」のお知らせは、状態を読み込んだ直後の画面にだけ出し、ほかの画面へ移れば消す
   if (!keepFlash) $('flash').innerHTML = '';
   window.scrollTo(0, 0);
@@ -329,7 +360,73 @@ function applyStatus(data) {
   firstScreen = data.firstScreen || 'register';
   family = data.family || [];
   me = data.me || {};
+  questions = data.questions || [];
 }
+
+/* ---------- 確認のお願い（修正版9で追加） ----------
+   職員が確かめたいこと（その日に来ていたか、お名前の読み）を、ご本人に答えてもらう。
+   帯は、受付の画面、ご家族の選択、受付できない日、受付の完了の画面に出す */
+const BANNER_SCREENS = ['checkin', 'family', 'closed', 'complete'];
+function updateBanner(id) {
+  $('qBanner').classList.toggle('hidden', !(questions.length && BANNER_SCREENS.indexOf(id) >= 0));
+  $('qCount').textContent = String(questions.length);
+}
+function renderAsk() {
+  const q = questions[0];
+  if (!q) { finishAsk(); return; }
+  $('lead').textContent = '確認のお願いに答えてください。';
+  $('askLater').classList.remove('hidden');
+  if (q.type === 'name') {
+    $('askLead').textContent = 'お名前の読みが、正しく登録されていないかもしれません。確かめてください。';
+    $('askQuestion').textContent = q.fullName + ' さん（' + (q.kana || '読みなし') + '）';
+    $('askButtons').innerHTML =
+      '<button type="button" class="answer" data-a="edit">お名前と読みを直す</button>' +
+      '<button type="button" class="answer sub" data-a="nameOk">このままで正しい</button>';
+  } else {
+    $('askLead').textContent = '記録が残っていないため、確かめさせてください。';
+    $('askQuestion').textContent = (q.self ? '' : q.fullName + ' さんは、') + q.dateLabel + 'の礼拝に来ていましたか？';
+    $('askButtons').innerHTML =
+      '<button type="button" class="answer" data-a="yes">来ていた</button>' +
+      '<button type="button" class="answer sub" data-a="no">来ていなかった</button>' +
+      '<button type="button" class="answer sub" data-a="unknown">覚えていない</button>';
+  }
+  document.querySelectorAll('#askButtons .answer').forEach(b => {
+    b.addEventListener('click', () => answerQuestion(q, b.dataset.a, b));
+  });
+  show('ask');
+}
+function finishAsk() {
+  $('lead').textContent = 'ご協力ありがとうございました。';
+  $('askLead').textContent = '';
+  $('askQuestion').textContent = 'ご協力ありがとうございました';
+  $('askButtons').innerHTML = '<button type="button" class="answer" id="askDone">受付の画面に戻る</button>';
+  $('askLater').classList.add('hidden');
+  $('askDone').addEventListener('click', () => loadStatus());
+  show('ask');
+}
+async function answerQuestion(q, a, button) {
+  if (a === 'edit') { await openManage(q.id); return; }
+  const buttons = Array.from(document.querySelectorAll('#askButtons .answer'));
+  buttons.forEach(b => { b.disabled = true; });
+  busy(button, true);
+  const data = await api('answerCheck', { no: q.no, participantId: q.id, answer: a });
+  busy(button, false);
+  buttons.forEach(b => { b.disabled = false; });
+  if (!data.ok) {
+    if (data.code === 'UNLINKED' || data.code === 'FORBIDDEN') { await loadStatus(); return; }
+    $('askMsg').innerHTML = '<p class="error">' + esc(data.message) + '</p>';
+    return;
+  }
+  questions = questions.filter(x => x !== q);
+  const text = data.already ? 'この確認には、既に答えが届いていました。'
+    : a === 'yes' ? (data.fullName || q.fullName) + ' さんの' + (data.dateLabel || q.dateLabel) + 'の出席を記録しました。'
+    : a === 'nameOk' ? 'お名前の読みを確かめました。'
+    : '答えを記録しました。';
+  renderAsk();
+  $('askMsg').innerHTML = savedHtml(text);
+}
+$('qOpen').addEventListener('click', () => { $('askMsg').innerHTML = ''; renderAsk(); });
+$('askLater').addEventListener('click', () => loadStatus());
 
 async function loadStatus(flash) {
   show('loading');
@@ -637,7 +734,7 @@ $('familyCheckinButton').addEventListener('click', async () => {
 });
 
 /* ---------- ご家族の登録 ---------- */
-async function openManage() {
+async function openManage(targetId) {
   show('loading');
   const data = await api('status');
   if (!data.ok) { fail(data.message); return; }
@@ -652,6 +749,12 @@ async function openManage() {
   renderManage();
   $('lead').textContent = '一緒に来るご家族を登録します。';
   show('manage');
+  // 確認のお願いから開いたときは、その方のお名前と読みを直す欄を開く
+  editFromAsk = false;
+  if (targetId) {
+    const p = family.find(x => x.id === targetId);
+    if (p && p.editable) { editFromAsk = true; openEdit(p); }
+  }
 }
 function resetFamilyForm() {
   // 姓とそのよみが分かっていれば、姓を先に入れておく（名だけ打てば済むように）
@@ -676,7 +779,7 @@ function renderManage() {
 function openEdit(p) {
   if (!p) return;
   editing = p;
-  $('editTitle').textContent = p.fullName + ' さんのお名前を修正する';
+  $('editTitle').textContent = p.fullName + (editFromAsk ? ' さんのお名前と読みを直す' : ' さんのお名前を修正する');
   $('editSurname').value = p.surname || '';
   $('editGiven').value = p.givenName || '';
   editKana.load(p.surname || '', p.givenName || '', p.kana || '');
@@ -690,7 +793,11 @@ function closeEdit() {
   $('editBox').classList.add('hidden');
   $('addBox').classList.remove('hidden');
 }
-$('editCancel').addEventListener('click', closeEdit);
+$('editCancel').addEventListener('click', () => {
+  closeEdit();
+  // 確認のお願いから開いていたときは、確認のお願いに戻る
+  if (editFromAsk) { editFromAsk = false; $('askMsg').innerHTML = ''; renderAsk(); }
+});
 $('editSave').addEventListener('click', async () => {
   if (!editing) return;
   const payload = {
@@ -704,7 +811,23 @@ $('editSave').addEventListener('click', async () => {
   const data = await api('familyEdit', payload);
   busy(button, false, 'この内容で保存する');
   if (!data.ok) { $('editMsg').innerHTML = '<p class="error">' + esc(data.message) + '</p>'; return; }
+  const editedId = editing.id;
   closeEdit();
+  // 確認のお願いから開いていたときは、確認のお願いに戻る（直していなければ、まだ答えていないことになる）
+  if (editFromAsk) {
+    editFromAsk = false;
+    if (data.unchanged) {
+      renderAsk();
+      $('askMsg').innerHTML = '<p class="notice" style="margin-top:14px">お名前は変わっていません。正しければ「このままで正しい」を押してください。</p>';
+      return;
+    }
+    questions = questions.filter(x => !(x.type === 'name' && x.id === editedId));
+    await refreshFamily();
+    questions = questions.filter(x => !(x.type === 'name' && x.id === editedId));
+    renderAsk();
+    $('askMsg').innerHTML = savedHtml(data.fullName + ' さんのお名前と読みを保存しました。');
+    return;
+  }
   if (data.unchanged) {
     $('listMsg').innerHTML = '<p class="notice" style="margin-top:14px">お名前は変わっていません。</p>';
     return;
@@ -774,10 +897,10 @@ async function joinFamily(candidate, payload, button) {
 $('famAddButton').addEventListener('click', () => addFamily(false));
 $('manageBack').addEventListener('click', () =>
   loadStatus(changedCount ? 'ご家族の登録を更新しました。' : ''));
-$('familyFromSingle').addEventListener('click', openManage);
-$('familyFromList').addEventListener('click', openManage);
-$('familyFromClosed').addEventListener('click', openManage);
-$('familyFromComplete').addEventListener('click', openManage);
+$('familyFromSingle').addEventListener('click', () => openManage());
+$('familyFromList').addEventListener('click', () => openManage());
+$('familyFromClosed').addEventListener('click', () => openManage());
+$('familyFromComplete').addEventListener('click', () => openManage());
 
 $('retryButton').addEventListener('click', () => start());
 
